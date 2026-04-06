@@ -669,7 +669,7 @@ export default function Home() {
         {/* Main Content Area (Grid or Tug) */}
         <div className="flex-1 min-w-0">
           {/* Match Status Badge — hidden for TTR which has its own built-in timer */}
-          {match.mode !== 'ttr' && (
+          {(match.mode as string) !== 'ttr' && (
             <div className="flex justify-center mt-4 mb-6">
               {!matchHasStarted && (
                 <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border"
@@ -696,7 +696,7 @@ export default function Home() {
           )}
 
           {/* Show problem grid always during or after match, or always for TTR to allow joining */}
-          {(matchHasStarted || match.mode === 'ttr') ? (
+          {(matchHasStarted || (match.mode as string) === 'ttr') ? (
             loading ? (
               <Loading />
             ) : match.mode === 'tug' ? (
@@ -708,7 +708,7 @@ export default function Home() {
                 showRatings={showRatings}
                 teamColors={teamColors}
               />
-            ) : match.mode === 'ttr' ? (
+            ) : (match.mode as string) === 'ttr' ? (
               <TTRGameDisplay match={match} currentTeam={currentTeam} setCurrentTeam={setCurrentTeam} hasStarted={matchHasStarted} />
             ) : (
               <div className={`grid ${gridClasses[gridSize]} px-2 sm:px-4 w-full`}>
@@ -796,7 +796,7 @@ export default function Home() {
         </div>
 
         {/* Solve Log Panel — hidden for TTR mode (TTR has its own) */}
-        {match.mode !== 'ttr' && (
+        {(match.mode as string) !== 'ttr' && (
           <div className={`shrink-0 mt-8 lg:mt-0 transition-all duration-300 ease-in-out ${logCollapsed ? 'w-full lg:w-10' : 'w-full lg:w-80'}`}>
             <div
               className={`lg:sticky lg:top-6 flex flex-col rounded-xl overflow-hidden transition-all duration-300 ${logCollapsed ? 'h-auto' : 'h-80 lg:h-[calc(100vh-6rem)]'}`}
