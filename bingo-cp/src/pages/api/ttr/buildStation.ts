@@ -1,7 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/app/lib/prisma';
 import { buildStation } from '@/lib/ttrLogic';
-import { Match, TTRState } from '@/app/types/match';
+import { TTRState } from '@/app/types/match';
+import { broadcastTtrUpdate } from '@/lib/pusherServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {
@@ -43,8 +44,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return newState;
         });
 
-        // Return the NEW state after the transaction
+        // Respond to the requesting player immediately with the new state
         res.status(200).json({ success: true, newState: updatedState });
+
+        // Broadcast a compact diff to ALL other clients via Pusher.
+        // Clients apply this in-memory — NO /api/ttr/sync round-trip needed.
+        const player = updatedState.players[team];
+        const trackState = updatedState.tracks[trackId];
+        broadcastTtrUpdate(matchId, {
+            action: 'buildStation',
+            team,
+            trackId,
+            trackUpdate: trackState,        // { id, claimedBy, stationedBy }
+            playerUpdate: {                 // only the changed fields
+                coins: player.coins,
+                stationsLeft: player.stationsLeft,
+            },
+        }).catch((err) => {
+            console.error('[Pusher] Failed to broadcast ttr-update after buildStation:', err);
+        });
+
     } catch (error: any) {
         console.error('Error in buildStation:', error);
         res.status(500).json({ message: error.message || 'Internal Server Error' });

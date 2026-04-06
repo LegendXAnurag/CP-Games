@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Match, TTRState, Ticket } from "@/app/types/match";
 import TTRMap from "@/components/TTRMap";
 import CoinMarketplace from "@/components/CoinMarketplace";
@@ -9,6 +9,7 @@ import { TICKETS, CITIES } from "../../lib/ttrData";
 import { AuthProvider, useTtrAuth } from "../ttr/AuthContext";
 import JoinScreen from "../ttr/JoinScreen";
 import { TrainFront, MapPin, CheckCircle2, Ticket as TicketIcon } from "lucide-react";
+import { getPusherClient } from "@/lib/pusherClient";
 
 interface TTRGameDisplayProps {
     match: Match;
@@ -94,42 +95,129 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         if (user) setCurrentTeam(user.teamColor);
     }, [user, setCurrentTeam]);
 
-    useEffect(() => {
-        if (isLoading) return;
-        let intervalId: NodeJS.Timeout;
+    // ── Core sync function — fetches fresh state from the DB ──────────────────
+    const syncState = useCallback(async () => {
+        try {
+            const body: Record<string, string> = { matchId: match.id };
+            if (user?.token) body.token = user.token;
 
-        const poll = async () => {
-            try {
-                const body: Record<string, string> = { matchId: match.id };
-                if (user?.token) body.token = user.token;
+            const res = await fetch('/api/ttr/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
 
-                const res = await fetch('/api/ttr/sync', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.match?.ttrState) {
-                        const state = data.match.ttrState as TTRState;
-                        setTtrState(state);
-                        setLastSync(new Date());
-
-                        // Build solve log from state.solveLog if available
-                        if (Array.isArray((state as any).solveLog)) {
-                            setSolveLog((state as any).solveLog);
-                        }
+            if (res.ok) {
+                const data = await res.json();
+                if (data.match?.ttrState) {
+                    const state = data.match.ttrState as TTRState;
+                    setTtrState(state);
+                    setLastSync(new Date());
+                    if (Array.isArray((state as any).solveLog)) {
+                        setSolveLog((state as any).solveLog);
                     }
                 }
+            }
+        } catch (e) {
+            console.error('State sync failed:', e);
+        }
+    }, [match.id, user]);
+
+    // ── Fallback polling (every 10s) — safety net for reconnects / missed events
+    useEffect(() => {
+        if (isLoading) return;
+        syncState(); // immediate on mount
+        const syncInterval = setInterval(syncState, 10000);
+        return () => clearInterval(syncInterval);
+    }, [isLoading, syncState]);
+
+    // ── Pusher WebSocket — instant in-memory update, zero DB round-trip ──────
+    useEffect(() => {
+        if (isLoading) return;
+
+        const pusher = getPusherClient();
+        const channel = pusher.subscribe(`match-${match.id}`);
+
+        channel.bind('ttr-update', (data: any) => {
+            if (data?.action === 'buildTrack' && data.trackId && data.team) {
+                // Apply track claim diff directly — no network call needed
+                setTtrState(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        tracks: {
+                            ...prev.tracks,
+                            [data.trackId]: {
+                                ...(prev.tracks[data.trackId] || {}),
+                                ...data.trackUpdate,
+                            },
+                        },
+                        players: {
+                            ...prev.players,
+                            [data.team]: {
+                                ...prev.players[data.team],
+                                ...data.playerUpdate,
+                            },
+                        },
+                    };
+                });
+
+            } else if (data?.action === 'buildStation' && data.trackId && data.team) {
+                // Apply station build diff directly
+                setTtrState(prev => {
+                    if (!prev) return prev;
+                    return {
+                        ...prev,
+                        tracks: {
+                            ...prev.tracks,
+                            [data.trackId]: {
+                                ...(prev.tracks[data.trackId] || {}),
+                                ...data.trackUpdate,
+                            },
+                        },
+                        players: {
+                            ...prev.players,
+                            [data.team]: {
+                                ...prev.players[data.team],
+                                ...data.playerUpdate,
+                            },
+                        },
+                    };
+                });
+
+            } else {
+                // coinsAwarded / unknown action — do a real sync to pick up market/coin changes
+                syncState();
+            }
+        });
+
+        return () => {
+            channel.unbind('ttr-update');
+            pusher.unsubscribe(`match-${match.id}`);
+        };
+    }, [match.id, isLoading, syncState]);
+
+    // ── Slow CF solve check (every 65s) — runs Codeforces API fetch ───────────
+    useEffect(() => {
+        if (isLoading || !user?.token) return; // spectators and unauthenticated users skip
+
+        const checkSolves = async () => {
+            try {
+                await fetch('/api/ttr/checkSolves', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ matchId: match.id, token: user.token }),
+                });
+                // No need to process the response here — the next syncState() call
+                // will pick up any newly awarded coins from the DB.
             } catch (e) {
-                console.error("Poll failed", e);
+                console.error('Solve check failed:', e);
             }
         };
 
-        poll();
-        intervalId = setInterval(poll, 15000);
-        return () => clearInterval(intervalId);
+        checkSolves(); // run once on mount
+        const checkInterval = setInterval(checkSolves, 65000);
+        return () => clearInterval(checkInterval);
     }, [match.id, user, isLoading]);
 
     const handleStateUpdate = (newState: TTRState) => setTtrState(newState);
@@ -226,14 +314,9 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         ...p,
         displayScore: calculateTotalScore(ttrState, p.team)
     })).sort((a: any, b: any) => b.displayScore - a.displayScore);
-    const scorecardH = players.length * 52 + 8; // approx height for calc
-
-    // ─── Navbar=64px, header=56px, scorecard, ticket-tab-bar≈40px (non-spectator only)
-    const ticketBarH = isSpectator ? 0 : 40;
-    const mapHeight = `calc(100vh - 64px - 56px - ${scorecardH}px - ${ticketBarH}px)`;
 
     return (
-        <div className="flex flex-col bg-[#050505] min-h-screen w-full max-w-[1600px] mx-auto">
+        <div className="flex flex-col bg-[#050505] h-full overflow-y-auto w-full max-w-[1600px] mx-auto">
 
             {/* ╔══════════════════════════════════════════════
                     HEADER ROW — 56px
@@ -314,11 +397,14 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
             </div>
 
             {/* ╔══════════════════════════════════════════════
-                    SCORECARD ROW — compact, one row per team
+                    SCORECARD — compact vertical stack, one row per team
                 ══════════════════════════════════════════════╗ */}
             <div
-                className="shrink-0"
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(5,5,5,0.98)' }}
+                className="shrink-0 flex flex-col"
+                style={{
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    background: 'rgba(5,5,5,0.98)',
+                }}
             >
                 {players.map((player: any, idx: number) => {
                     const color = COLOR_HEX[player.team?.toLowerCase()] || '#6b7280';
@@ -326,59 +412,33 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     return (
                         <div
                             key={player.team}
-                            className="flex items-center gap-3 px-4 py-2.5"
+                            className="flex items-center gap-3 px-4 py-2"
                             style={{
                                 borderLeft: `3px solid ${color}`,
                                 borderBottom: idx < players.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
                                 boxShadow: isLeader ? `inset 0 0 60px ${color}06` : 'none',
                             }}
                         >
-                            {/* Team dot + name */}
-                            <div className="flex items-center gap-2 min-w-[100px]">
-                                <div
-                                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: color, boxShadow: isLeader ? `0 0 8px ${color}` : 'none' }}
-                                />
-                                <span
-                                    className="text-xs font-bold uppercase tracking-wider truncate font-heading"
-                                    style={{ color: isLeader ? color : '#e5e5e5' }}
-                                >
-                                    {player.team}
-                                </span>
-                                {isLeader && players.length > 1 && (
-                                    <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded font-heading"
-                                        style={{ background: `${color}20`, color }}>
-                                        LEAD
-                                    </span>
-                                )}
-                            </div>
-
-                            {/* Points — most prominent */}
+                            {/* Dot + team name */}
                             <div
-                                className="flex items-center gap-1.5 px-3 py-1 rounded-full shrink-0"
-                                style={{ background: `${color}20`, border: `1px solid ${color}50` }}
-                            >
-                                <span className="text-sm font-black font-mono tabular-nums font-mono" style={{ color }}>
-                                    {player.displayScore}
-                                </span>
-                                <span className="text-[10px] text-white/50 font-heading">pts</span>
-                            </div>
-
-                            {/* Stats chips */}
-                            <div className="flex items-center gap-2 flex-1 flex-wrap">
-                                <StatChip
-                                    icon="🪙" value={player.coins} label="Coins"
-                                    bg="rgba(250,204,21,0.08)" border="rgba(250,204,21,0.2)" textColor="#eab308"
-                                />
-                                <StatChip
-                                    icon="🚂" value={player.trainsLeft} label="Trains Left"
-                                    bg="rgba(59,130,246,0.08)" border="rgba(59,130,246,0.2)" textColor="#60a5fa"
-                                />
-                                <StatChip
-                                    icon="🏠" value={player.stationsLeft} label="Stations"
-                                    bg="rgba(239,68,68,0.08)" border="rgba(239,68,68,0.2)" textColor="#f87171"
-                                />
-                            </div>
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: color, boxShadow: isLeader ? `0 0 6px ${color}` : 'none' }}
+                            />
+                            <span className="text-[11px] font-bold uppercase tracking-wider font-heading min-w-[60px]" style={{ color: isLeader ? color : '#d4d4d4' }}>
+                                {player.team}
+                            </span>
+                            {isLeader && (
+                                <span className="text-[8px] font-bold px-1 py-0.5 rounded font-heading shrink-0" style={{ background: `${color}25`, color }}>LEAD</span>
+                            )}
+                            {/* Score */}
+                            <span className="text-[12px] font-black font-mono tabular-nums shrink-0" style={{ color }}>{player.displayScore}</span>
+                            <span className="text-[9px] text-white/30 font-heading shrink-0">pts</span>
+                            {/* Separator */}
+                            <div className="w-px h-3 bg-white/10 shrink-0 mx-1" />
+                            {/* Compact stats */}
+                            <span className="text-[10px] font-mono shrink-0" style={{ color: '#eab308' }}>🪙{player.coins}</span>
+                            <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#60a5fa' }}>🚂{player.trainsLeft}</span>
+                            <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#f87171' }}>🏠{player.stationsLeft}</span>
                         </div>
                     );
                 })}
@@ -467,14 +527,18 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
             })()}
 
             {/* ╔══════════════════════════════════════════════
-                    MAP — fills all remaining viewport height
+                    MAP — takes all remaining visible space.
+                    min-height ensures it's large even when scrolled.
                 ══════════════════════════════════════════════╗ */}
             <div
-                className="w-full relative overflow-hidden shrink-0"
+                className="w-full relative overflow-hidden"
                 style={{
-                    height: mapHeight,
-                    minHeight: '350px',
                     borderTop: '1px solid rgba(0,240,255,0.04)',
+                    // Take up as much of the remaining viewport as possible.
+                    // The outer container is scrollable; this div just needs to be tall.
+                    // header(56) + scorecard(44) + ticket-bar(~36) = ~136px consumed above.
+                    minHeight: 'calc(100vh - 64px - 136px)',
+                    flex: '1 1 auto',
                 }}
             >
                 <TTRMap

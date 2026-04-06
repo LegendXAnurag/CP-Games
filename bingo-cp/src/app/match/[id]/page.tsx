@@ -646,6 +646,19 @@ export default function Home() {
   const matchHasEnded = currentTime >= matchEnd;
   const matchOngoing = matchHasStarted && !matchHasEnded && !matchLocked;
 
+  // ── TTR mode: escape the padded page layout, fill all remaining viewport space
+  if (match.mode === 'ttr') {
+    return (
+      <main className="text-white" style={{ background: '#050505' }}>
+        {winner && confettiActive && <Confetti width={width} height={height} recycle={false} numberOfPieces={300} />}
+        {/* Navbar is 64px (pt-16). This div fills exactly the remaining viewport. */}
+        <div style={{ paddingTop: '64px', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <TTRGameDisplay match={match} currentTeam={currentTeam} setCurrentTeam={setCurrentTeam} hasStarted={matchHasStarted} />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen text-white pt-16" style={{ background: '#050505' }}>
 
