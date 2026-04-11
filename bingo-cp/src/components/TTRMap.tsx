@@ -303,15 +303,35 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                         );
                     })}
                     {(state.mapData ? state.mapData.cities : CITIES).map(city => {
-                        // Removed stationOwner logic from here
-
                         let cx = city.x;
                         let cy = city.y;
+                        const mapW = state.mapData ? state.mapData.width : 1200;
+                        const mapH = state.mapData ? state.mapData.height : 800;
 
                         if (!state.mapData) {
                             // Legacy conversion
                             cx = (city.x / 100) * 1200;
                             cy = (city.y / 100) * 800;
+                        }
+
+                        let textY = -15;
+                        let textX = 0;
+                        let textAnchor: "middle" | "start" | "end" = "middle";
+
+                        if (cy < 30) {
+                            textY = 22;
+                        } else if (cy > mapH - 20) {
+                            textY = -18;
+                        }
+
+                        if (cx < 50) {
+                            textAnchor = "start";
+                            textX = 12;
+                            if (cy >= 30 && cy <= mapH - 20) textY = 4;
+                        } else if (cx > mapW - 50) {
+                            textAnchor = "end";
+                            textX = -12;
+                            if (cy >= 30 && cy <= mapH - 20) textY = 4;
                         }
 
                         const isFocusedCity = focusedTicket && (focusedTicket.city1 === city.id || focusedTicket.city2 === city.id);
@@ -333,10 +353,11 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
 
                                 {/* City Name */}
                                 <text
-                                    y={-15}
-                                    textAnchor="middle"
-                                    className="text-xs font-bold pointer-events-none select-none fill-black transition-all group-hover:font-extrabold"
-                                    style={{ textShadow: "0px 0px 2px white" }} // Outline for readability
+                                    x={textX}
+                                    y={textY}
+                                    textAnchor={textAnchor}
+                                    className="text-xs sm:text-sm font-black pointer-events-none select-none transition-all group-hover:scale-110 origin-center"
+                                    style={{ fill: 'rgba(0,0,0,0.9)', stroke: 'white', strokeWidth: '3.5px', paintOrder: 'stroke fill', strokeLinejoin: 'round' }}
                                 >
                                     {city.name}
                                 </text>

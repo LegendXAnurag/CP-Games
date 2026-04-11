@@ -50,6 +50,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const [focusedTicket, setFocusedTicketRaw] = useState<Ticket | null>(null);
     // Tracks whether the user has manually overridden the focus (so auto-focus doesn't fight them)
     const userClearedFocusRef = useRef<boolean>(false);
+    const [showPenalties, setShowPenalties] = useState(false);
     
     const [showFinalLapPopup, setShowFinalLapPopup] = useState(false);
     const prevFinalLapRef = useRef(ttrState?.finalLapEndTime);
@@ -149,6 +150,13 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
 
     const msLeft = matchEnd.getTime() - now.getTime();
     const isMatchEnded = msLeft <= 0;
+
+    useEffect(() => {
+        if (isMatchEnded && !showPenalties) {
+            const timer = setTimeout(() => setShowPenalties(true), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [isMatchEnded, showPenalties]);
 
     // ── Fallback polling (every 10s) — safety net for reconnects / missed events
     useEffect(() => {
@@ -334,10 +342,33 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const timerColor = isMatchEnded ? '#ef4444' : msLeft < 5 * 60 * 1000 ? '#ef4444' : '#00f0ff';
 
     // ─── Scorecard — sort by score descending ──────────────────────────────
-    const players = Object.values(ttrState.players).map(p => ({
-        ...p,
-        displayScore: calculateTotalScore(ttrState, p.team)
-    })).sort((a: any, b: any) => b.displayScore - a.displayScore);
+    const allTickets = ttrState.mapData?.tickets || TICKETS;
+    const players = Object.values(ttrState.players).map(p => {
+        const baseScore = calculateTotalScore(ttrState, p.team);
+        let penalty = 0;
+        
+        for (const ticketId of p.destinations) {
+            if (ticketId === 'optimistic_draw') continue;
+            const ticket = allTickets.find(t => t.id === ticketId);
+            if (ticket) {
+                const completed = getCompletedRoute(ttrState, p.team, ticket.city1, ticket.city2);
+                if (!completed) {
+                    penalty += ticket.points;
+                }
+            }
+        }
+        
+        const finalScore = baseScore - penalty;
+        const displayScore = showPenalties ? finalScore : baseScore;
+
+        return {
+            ...p,
+            baseScore,
+            penalty,
+            finalScore,
+            displayScore
+        };
+    }).sort((a: any, b: any) => b.displayScore - a.displayScore);
 
     return (
         <div className="flex flex-col bg-[#050505] h-full overflow-y-auto w-full max-w-[1600px] mx-auto">
@@ -438,6 +469,8 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 {players.map((player: any, idx: number) => {
                     const color = COLOR_HEX[player.team?.toLowerCase()] || '#6b7280';
                     const isLeader = idx === 0 && players.length > 1;
+                    const playerTickets = player.destinations.map((id: string) => allTickets.find(t => t.id === id)).filter(Boolean) as Ticket[];
+
                     return (
                         <div
                             key={player.team}
@@ -468,6 +501,23 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             <span className="text-[10px] font-mono shrink-0" style={{ color: '#eab308' }}>🪙{player.coins}</span>
                             <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#60a5fa' }}>🚂{player.trainsLeft}</span>
                             <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#f87171' }}>🏠{player.stationsLeft}</span>
+                            
+                            {/* Tickets */}
+                            <div className="flex gap-1.5 ml-auto shrink-0 flex-wrap justify-end pl-4">
+                                {playerTickets.map(ticket => {
+                                    const isCompleted = getCompletedRoute(ttrState, player.team, ticket.city1, ticket.city2) !== null;
+                                    const lengthType = ticket.points >= 20 ? 'LONG' : 'SHORT';
+                                    return (
+                                        <div 
+                                            key={ticket.id} 
+                                            className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-heading uppercase tracking-widest transition-colors ${isCompleted ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}
+                                            title={isCompleted ? `Completed (+${ticket.points} pts)` : `Pending (-${ticket.points} pts penalty)`}
+                                        >
+                                            {lengthType} {ticket.points}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     );
                 })}
@@ -625,8 +675,22 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                                     <span title="Coins">🪙 {player.coins}</span>
                                                     <span title="Trains Left">🚂 {player.trainsLeft}</span>
                                                 </div>
-                                                <div className="text-3xl font-black font-mono tabular-nums text-right" style={{ color }}>
-                                                    {player.displayScore} <span className="text-sm text-white/30 font-heading">pts</span>
+                                                <div className="flex items-end gap-2 text-right">
+                                                    <div className="flex flex-col items-end">
+                                                        <div className="flex items-center gap-2">
+                                                            {showPenalties && player.penalty > 0 && (
+                                                                <>
+                                                                    <span className="text-lg font-mono text-white/50 line-through animate-in slide-in-from-right fade-in duration-500">{player.baseScore}</span>
+                                                                    <span className="text-lg font-mono text-red-500 animate-in slide-in-from-right fade-in duration-500 delay-150">-{player.penalty}</span>
+                                                                    <span className="text-white/30">=</span>
+                                                                </>
+                                                            )}
+                                                            <span className="text-3xl font-black font-mono tabular-nums transition-all duration-500" style={{ color }}>
+                                                                {showPenalties ? player.finalScore : player.baseScore}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-sm text-white/30 font-heading mb-1">pts</span>
                                                 </div>
                                             </div>
                                         </div>

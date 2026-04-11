@@ -74,6 +74,18 @@ export default function JoinScreen({ matchId, teams: initialTeams }: JoinScreenP
         }
     };
 
+    const getTeamStyle = (color: string) => {
+        switch (color) {
+            case 'red': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100';
+            case 'blue': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
+            case 'green': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100';
+            case 'yellow': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100';
+            case 'pink': return 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-100';
+            case 'black': return 'bg-gray-200 text-black dark:bg-zinc-800 dark:text-black dark:[text-shadow:-1px_-1px_0_#FFF,1px_-1px_0_#FFF,-1px_1px_0_#FFF,1px_1px_0_#FFF]';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
             <Card className="w-full max-w-2xl shadow-2xl">
@@ -91,10 +103,7 @@ export default function JoinScreen({ matchId, teams: initialTeams }: JoinScreenP
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         {teams.map((team) => (
                             <div key={team.id} className="space-y-3">
-                                <h3 className={`font-bold text-lg px-2 py-1 rounded ${team.color === 'red' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100' :
-                                        team.color === 'blue' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100' :
-                                            'bg-gray-100 text-gray-800'
-                                    }`}>
+                                <h3 className={`font-bold text-lg px-2 py-1 rounded ${getTeamStyle(team.color)}`}>
                                     {team.name}
                                 </h3>
                                 <div className="space-y-2">
