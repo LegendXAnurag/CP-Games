@@ -10,6 +10,7 @@ import { AuthProvider, useTtrAuth } from "../ttr/AuthContext";
 import JoinScreen from "../ttr/JoinScreen";
 import { TrainFront, MapPin, CheckCircle2, Ticket as TicketIcon } from "lucide-react";
 import { getPusherClient } from "@/lib/pusherClient";
+import { motion } from "framer-motion";
 
 interface TTRGameDisplayProps {
     match: Match;
@@ -99,6 +100,13 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         // Auto-focus the first completed ticket only (don't clear if none)
         if (completedTickets.length > 0) {
             setFocusedTicketRaw(completedTickets[0]);
+            
+            const timer = setTimeout(() => {
+                if (!userClearedFocusRef.current) {
+                    setFocusedTicketRaw(null);
+                }
+            }, 4000);
+            return () => clearTimeout(timer);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ttrState, currentTeam]);
@@ -726,8 +734,10 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     };
                     const isCompleted = getCompletedRoute(ttrState, currentTeam, focusedTicket.city1, focusedTicket.city2) !== null;
                     return (
-                        <div
-                            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 px-5 py-3 rounded-2xl"
+                        <motion.div
+                            drag
+                            dragMomentum={false}
+                            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 px-5 py-3 rounded-2xl cursor-grab active:cursor-grabbing"
                             style={{
                                 background: 'rgba(8,8,12,0.92)',
                                 border: isCompleted ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(168,127,255,0.35)',
@@ -784,7 +794,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             >
                                 ×
                             </button>
-                        </div>
+                        </motion.div>
                     );
                 })()}
             </div>
