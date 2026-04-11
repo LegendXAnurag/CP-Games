@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useTtrAuth } from './AuthContext';
@@ -19,10 +19,33 @@ interface JoinScreenProps {
     }>;
 }
 
-export default function JoinScreen({ matchId, teams }: JoinScreenProps) {
+export default function JoinScreen({ matchId, teams: initialTeams }: JoinScreenProps) {
     const { login, spectate } = useTtrAuth();
+    const [teams, setTeams] = useState(initialTeams);
     const [loadingId, setLoadingId] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/getMatch?matchId=${matchId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const matchData = data.match || data;
+                    if (matchData.teams) {
+                        const formattedTeams = matchData.teams.map((t: any) => ({
+                            id: t.id, name: t.name, color: t.color,
+                            members: t.members.map((m: any) => ({ id: m.id, handle: m.handle, claimed: m.claimed ?? false }))
+                        }));
+                        setTeams(formattedTeams);
+                    }
+                }
+            } catch (err) {
+                // Background poll failure, safe to ignore
+            }
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [matchId]);
 
     const handleJoin = async (memberId: number, handle: string, teamId: number, teamColor: string) => {
         setLoadingId(memberId);

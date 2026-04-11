@@ -27,6 +27,7 @@ export default function CreateTTRMatch() {
         return String(future.getHours()).padStart(2, '0') + ':' + String(future.getMinutes()).padStart(2, '0');
     });
     const [gameDuration, setGameDuration] = useState("120");
+    const [initialCoins, setInitialCoins] = useState<number>(0);
     const [problemsPerLevel, setProblemsPerLevel] = useState(5);
 
     const [level1, setLevel1] = useState({ min: 800, max: 900, count: 5, coins: 2 });
@@ -98,7 +99,8 @@ export default function CreateTTRMatch() {
                     level2: { ...level2, count: problemsPerLevel },
                     level3: { ...level3, count: problemsPerLevel },
                     level4: { ...level4, count: problemsPerLevel },
-                    mapId: selectedMapId || undefined
+                    mapId: selectedMapId || undefined,
+                    initialCoins: initialCoins
                 },
                 teams
             };
@@ -237,6 +239,16 @@ export default function CreateTTRMatch() {
                                         {gameDuration}m
                                     </span>
                                 </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Initial Coins</Label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    value={initialCoins}
+                                    onChange={(e) => setInitialCoins(parseInt(e.target.value) || 0)}
+                                    className="max-w-xs"
+                                />
                             </div>
                         </CardContent>
                     </Card>

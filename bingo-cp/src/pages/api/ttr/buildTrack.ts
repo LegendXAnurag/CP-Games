@@ -35,7 +35,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             newState = buildTrack(ttrState, team, trackId);
 
             if (!newState) {
+                if (ttrState.tracks && ttrState.tracks[trackId] && ttrState.tracks[trackId].claimedBy) {
+                    throw new Error('Track already occupied by someone else');
+                }
                 throw new Error('Failed to build track (validation failed)');
+            }
+
+            if (newState.players[team].trainsLeft < 3 && !newState.finalLapEndTime) {
+                newState.finalLapEndTime = new Date(Date.now() + 2 * 60 * 1000).toISOString();
             }
 
             await tx.match.update({
@@ -63,6 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     score: player.score,
                     routes: player.routes,
                 },
+                finalLapEndTime: (newState as TTRState).finalLapEndTime,
             }).catch((err) => {
                 console.error('[Pusher] Failed to broadcast ttr-update after buildTrack:', err);
             });

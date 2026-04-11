@@ -116,10 +116,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         const players: Record<string, TTRPlayerState> = {};
+        const initialCoins = ttrParams.initialCoins !== undefined ? Number(ttrParams.initialCoins) : 0;
         teams.forEach((t: any) => {
             players[t.color] = {
                 team: t.color,
-                coins: 10,
+                coins: initialCoins,
                 trainsLeft: 45,
                 stationsLeft: 3,
                 score: 0,

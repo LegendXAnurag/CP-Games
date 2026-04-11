@@ -84,7 +84,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const enrichedSolveLog = match.solveLog.map(log => {
                 const tsStr = new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const pName = log.problem?.name || `Problem ${log.index}`;
-                const coins = log.problem?.rating ? Math.round(log.problem.rating / 500) + 1 : 0;
+                
+                let coins = 0;
+                if (state.allProbs && Array.isArray(state.allProbs)) {
+                    const probState = state.allProbs.find((p: any) => p.contestId === log.contestId && p.index === log.index);
+                    if (probState) {
+                        coins = probState.points !== undefined 
+                            ? probState.points 
+                            : (probState.row !== undefined 
+                                ? (probState.row === 0 ? 2 : probState.row === 1 ? 3 : probState.row === 2 ? 4 : 5) 
+                                : 0);
+                    }
+                }
+                
+                // Fallback inside same condition just in case
+                if (coins === 0 && log.problem?.rating) {
+                    // Try to guess from rating but prefer allProbs logic if possible
+                    coins = Math.round(log.problem.rating / 500) + 1;
+                }
+
                 return {
                     team: log.team,
                     handle: log.handle || 'Unknown Solver',

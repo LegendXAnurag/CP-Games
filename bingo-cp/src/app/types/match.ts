@@ -62,6 +62,7 @@ export interface TTRParams {
   level4?: { min: number; max: number; count: number; coins: number };
   gameDurationMinutes: number;
   mapId?: string;
+  initialCoins?: number;
 }
 
 export interface TTRState {
@@ -79,6 +80,7 @@ export interface TTRState {
     height: number;
     tickets: Ticket[];
   };
+  finalLapEndTime?: string;
 }
 
 export interface TTRPlayerState {

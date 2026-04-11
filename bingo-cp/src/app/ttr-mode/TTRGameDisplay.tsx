@@ -50,6 +50,19 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const [focusedTicket, setFocusedTicketRaw] = useState<Ticket | null>(null);
     // Tracks whether the user has manually overridden the focus (so auto-focus doesn't fight them)
     const userClearedFocusRef = useRef<boolean>(false);
+    
+    const [showFinalLapPopup, setShowFinalLapPopup] = useState(false);
+    const prevFinalLapRef = useRef(ttrState?.finalLapEndTime);
+
+    useEffect(() => {
+        if (!prevFinalLapRef.current && ttrState?.finalLapEndTime) {
+            setShowFinalLapPopup(true);
+            setTimeout(() => {
+                setShowFinalLapPopup(false);
+            }, 6000); // Hide after 6 seconds
+        }
+        prevFinalLapRef.current = ttrState?.finalLapEndTime;
+    }, [ttrState?.finalLapEndTime]);
 
     // Wrapper so user clicks mark the ref
     const setFocusedTicket = (t: Ticket | null) => {
@@ -123,13 +136,27 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         }
     }, [match.id, user]);
 
+    // ─── Compute timer ─────────────────────────────────────────────────────
+    const matchStart = new Date(match.startTime);
+    let matchEnd = new Date(matchStart.getTime() + match.durationMinutes * 60 * 1000);
+    
+    if (ttrState?.finalLapEndTime) {
+        const finalLapEnd = new Date(ttrState.finalLapEndTime);
+        if (finalLapEnd < matchEnd) {
+            matchEnd = finalLapEnd;
+        }
+    }
+
+    const msLeft = matchEnd.getTime() - now.getTime();
+    const isMatchEnded = msLeft <= 0;
+
     // ── Fallback polling (every 10s) — safety net for reconnects / missed events
     useEffect(() => {
-        if (isLoading) return;
+        if (isLoading || isMatchEnded) return;
         syncState(); // immediate on mount
         const syncInterval = setInterval(syncState, 10000);
         return () => clearInterval(syncInterval);
-    }, [isLoading, syncState]);
+    }, [isLoading, syncState, isMatchEnded]);
 
     // ── Pusher WebSocket — instant in-memory update, zero DB round-trip ──────
     useEffect(() => {
@@ -145,6 +172,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     if (!prev) return prev;
                     return {
                         ...prev,
+                        finalLapEndTime: data.finalLapEndTime !== undefined ? data.finalLapEndTime : prev.finalLapEndTime,
                         tracks: {
                             ...prev.tracks,
                             [data.trackId]: {
@@ -199,7 +227,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
 
     // ── Slow CF solve check (every 65s) — runs Codeforces API fetch ───────────
     useEffect(() => {
-        if (isLoading || !user?.token) return; // spectators and unauthenticated users skip
+        if (isLoading || !user?.token || isMatchEnded) return; // spectators, unauthenticated, or if match ended
 
         const checkSolves = async () => {
             try {
@@ -216,9 +244,10 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         };
 
         checkSolves(); // run once on mount
-        const checkInterval = setInterval(checkSolves, 65000);
+        const pollInterval = Number(process.env.NEXT_PUBLIC_CF_POLL_INTERVAL_MS) || 15000;
+        const checkInterval = setInterval(checkSolves, pollInterval);
         return () => clearInterval(checkInterval);
-    }, [match.id, user, isLoading]);
+    }, [match.id, user, isLoading, isMatchEnded]);
 
     const handleStateUpdate = (newState: TTRState) => setTtrState(newState);
 
@@ -302,12 +331,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         </div>
     );
 
-    // ─── Compute timer ─────────────────────────────────────────────────────
-    const matchStart = new Date(match.startTime);
-    const matchEnd = new Date(matchStart.getTime() + match.durationMinutes * 60 * 1000);
-    const msLeft = matchEnd.getTime() - now.getTime();
-    const matchEnded = msLeft <= 0;
-    const timerColor = matchEnded ? '#ef4444' : msLeft < 5 * 60 * 1000 ? '#ef4444' : '#00f0ff';
+    const timerColor = isMatchEnded ? '#ef4444' : msLeft < 5 * 60 * 1000 ? '#ef4444' : '#00f0ff';
 
     // ─── Scorecard — sort by score descending ──────────────────────────────
     const players = Object.values(ttrState.players).map(p => ({
@@ -343,13 +367,18 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 </div>
 
                 {/* Center: Timer */}
-                <div className="flex-1 flex justify-center">
+                <div className="flex-1 flex justify-center items-center">
                     <span
                         className="text-2xl font-mono font-bold tabular-nums tracking-widest font-mono"
                         style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}60` }}
                     >
-                        {matchEnded ? "ENDED" : formatTime(msLeft)}
+                        {isMatchEnded ? "ENDED" : formatTime(msLeft)}
                     </span>
+                    {ttrState.finalLapEndTime && !isMatchEnded && (
+                        <span className="ml-3 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase animate-pulse border border-red-500/50 bg-red-500/10 text-red-400 font-heading">
+                            Final Lap!
+                        </span>
+                    )}
                 </div>
 
                 {/* Right: Identity + sync */}
@@ -546,10 +575,83 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     state={ttrState}
                     currentTeam={currentTeam}
                     onUpdate={handleStateUpdate}
-                    readOnly={isSpectator}
+                    readOnly={isSpectator || isMatchEnded}
                     focusedTicket={focusedTicket}
                     setFocusedTicket={setFocusedTicket}
                 />
+
+                {/* END GAME LEADERBOARD OVERLAY */}
+                {isMatchEnded && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-500">
+                        <div className="bg-[#0a0a0a] border border-white/10 rounded-3xl p-8 max-w-2xl w-full shadow-2xl flex flex-col gap-6 max-h-full overflow-y-auto">
+                            <div className="text-center space-y-2 shrink-0">
+                                <h2 className="text-4xl font-black font-heading text-transparent bg-clip-text" style={{ backgroundImage: 'linear-gradient(135deg, #10b981, #06b6d4)' }}>
+                                    Match Ended
+                                </h2>
+                                <p className="text-[#a3a3a3] font-body text-sm uppercase tracking-widest">
+                                    {ttrState.finalLapEndTime ? "Final lap completed (trains went below 3)" : "Time limit reached!"}
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-3">
+                                {players.map((player: any, idx: number) => {
+                                    const color = COLOR_HEX[player.team?.toLowerCase()] || '#6b7280';
+                                    const isWinner = idx === 0 && players.length > 1; // Highlight lead/winner
+                                    return (
+                                        <div 
+                                            key={player.team} 
+                                            className={`flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${isWinner ? 'border-2 scale-[1.02]' : 'border hover:scale-[1.01]'}`}
+                                            style={{
+                                                backgroundColor: isWinner ? `${color}15` : 'rgba(255,255,255,0.02)',
+                                                borderColor: isWinner ? color : 'rgba(255,255,255,0.08)',
+                                                boxShadow: isWinner ? `0 0 30px ${color}20` : 'none',
+                                            }}
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="text-2xl font-black text-white/40 w-8 text-center font-heading">
+                                                    #{idx + 1}
+                                                </div>
+                                                <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}` }} />
+                                                <div className="text-xl font-bold uppercase tracking-wider font-heading" style={{ color: isWinner ? color : 'white' }}>
+                                                    {player.team} Team
+                                                </div>
+                                                {isWinner && (
+                                                    <span className="text-xs font-bold px-2 py-1 rounded font-heading hidden sm:inline-block" style={{ backgroundColor: `${color}30`, color: color, border: `1px solid ${color}60` }}>
+                                                        WINNER
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-4 sm:gap-6">
+                                                <div className="hidden sm:flex flex-col sm:flex-row gap-2 sm:gap-4 text-xs font-mono text-[#a3a3a3]">
+                                                    <span title="Coins">🪙 {player.coins}</span>
+                                                    <span title="Trains Left">🚂 {player.trainsLeft}</span>
+                                                </div>
+                                                <div className="text-3xl font-black font-mono tabular-nums text-right" style={{ color }}>
+                                                    {player.displayScore} <span className="text-sm text-white/30 font-heading">pts</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* FINAL LAP NOTIFICATION POPUP */}
+                {showFinalLapPopup && (
+                    <div className="absolute inset-0 z-40 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none animate-in fade-in duration-300 out-fade-out">
+                        <div className="bg-gradient-to-br from-[#0a0a0a] to-[#120a0a] border-2 border-red-500/80 rounded-[32px] p-10 max-w-lg shadow-[0_0_120px_rgba(239,68,68,0.3)] flex flex-col items-center gap-4 animate-in zoom-in-90 duration-500">
+                            <TrainFront className="w-20 h-20 text-red-500 mb-2 animate-bounce" />
+                            <h2 className="text-6xl font-black font-heading text-red-500 uppercase tracking-widest text-center" style={{ textShadow: '0 0 40px rgba(239,68,68,0.5)' }}>
+                                FINAL LAP
+                            </h2>
+                            <p className="text-[#d4d4d4] font-bold font-body text-xl text-center">
+                                A team has less than <span className="text-white">3</span> trains.<br/>
+                                <span className="text-red-400 font-black">2 Minutes Remaining!</span>
+                            </p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Ticket details overlay at bottom of map */}
                 {focusedTicket && !isSpectator && (() => {

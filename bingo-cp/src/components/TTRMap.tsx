@@ -40,17 +40,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
         if (!trackState || !trackState.claimedBy) {
             setConfirmTrack(track);
         } else {
-            // Claimed. Check if we can build station.
-            // If we already have a station, ignore
-            if (trackState.stationedBy?.includes(currentTeam)) {
-                return;
-            }
-
-            // If we own it, ignore
-            if (trackState.claimedBy === currentTeam) {
-                return;
-            }
-
+            // Always allow seeing who claimed the track or built stations
             setConfirmStationTrack(track);
         }
     };
@@ -197,39 +187,43 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                         if (track.units && track.units.length > 0) {
                             return (
                                 <g key={track.id} onClick={() => handleTrackClick(track)} className={`pointer-events-auto ${readOnly ? '' : 'cursor-pointer'} group`}>
-                                    {track.units.map((unit: any, idx: number) => (
-                                        <g key={idx}>
-                                            <rect
-                                                x={unit.x - (unit.width || 20) / 2}
-                                                y={unit.y - (unit.height || 8) / 2}
-                                                width={unit.width || 20}
-                                                height={unit.height || 8}
-                                                fill={isClaimed ? ownerColor : (track.color || 'gray')}
-                                                stroke={completedTrackIds.has(track.id) ? "white" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "yellow" : "black"}
-                                                strokeWidth={completedTrackIds.has(track.id) ? "3" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "3" : "1"}
-                                                transform={`rotate(${unit.rotation}, ${unit.x}, ${unit.y})`}
-                                                className={`transition-all ${!isClaimed ? 'hover:fill-yellow-500 hover:opacity-80' : ''} ${completedTrackIds.has(track.id) || confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "animate-pulse" : ""}`}
-                                            />
-                                            {/* Station Indicators: Perpendicular Rectangles */}
-                                            {trackState && trackState.stationedBy && trackState.stationedBy.length > 0 && (
-                                                trackState.stationedBy.map((stationTeam, sIdx) => (
+                                    {track.units.map((unit: any, idx: number) => {
+                                        const w = unit.width || 20;
+                                        const h = unit.height || 8;
+                                        const fillColors = isClaimed ? [ownerColor, ...((trackState as any)?.stationedBy || [])] : [track.color || 'gray'];
+                                        const colorCount = fillColors.length;
+                                        const stripeHeight = h / colorCount;
+
+                                        return (
+                                            <g key={idx} transform={`rotate(${unit.rotation}, ${unit.x}, ${unit.y})`}>
+                                                {/* Colored Stripes */}
+                                                {fillColors.map((c, i) => (
                                                     <rect
-                                                        key={`station-${sIdx}`}
-                                                        x={unit.x - 4} // Width 8 centered
-                                                        y={unit.y - 12} // Length 24 centered (slightly longer than track width 20)
-                                                        width={8}
-                                                        height={24}
-                                                        fill={stationTeam}
-                                                        stroke="white"
-                                                        strokeWidth="1"
-                                                        // Rotate perpendicular to unit (unit.rotation + 90)
-                                                        transform={`rotate(${unit.rotation + 90}, ${unit.x}, ${unit.y})`}
-                                                        className="pointer-events-none"
+                                                        key={`stripe-${i}`}
+                                                        x={unit.x - w / 2}
+                                                        y={unit.y - h / 2 + i * stripeHeight}
+                                                        width={w}
+                                                        height={stripeHeight}
+                                                        fill={c}
+                                                        className={`transition-all ${!isClaimed ? 'hover:fill-yellow-500 hover:opacity-80' : ''}`}
                                                     />
-                                                ))
-                                            )}
-                                        </g>
-                                    ))}
+                                                ))}
+                                                
+                                                {/* Outline / Stroke Over All Stripes */}
+                                                <rect
+                                                    x={unit.x - w / 2}
+                                                    y={unit.y - h / 2}
+                                                    width={w}
+                                                    height={h}
+                                                    fill="none"
+                                                    stroke={completedTrackIds.has(track.id) ? "white" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "yellow" : "black"}
+                                                    strokeWidth={completedTrackIds.has(track.id) ? "3" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "3" : "1"}
+                                                    className={`transition-all ${completedTrackIds.has(track.id) || confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "animate-pulse" : ""}`}
+                                                    style={{ pointerEvents: 'none' }}
+                                                />
+                                            </g>
+                                        );
+                                    })}
                                     {/* Helper click area for units? simplified to just clicking units for now */}
                                 </g>
                             );
@@ -414,45 +408,93 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                 </>
                             ) : confirmStationTrack ? (
                                 <>
-                                    <h3 className="text-xs font-bold uppercase tracking-widest text-purple-400 mb-2 font-heading flex items-center gap-1.5">
+                                    <h3 className="text-xs font-bold uppercase tracking-widest text-[#a87fff] mb-2 font-heading flex items-center gap-1.5">
                                         <TrainFront className="w-3.5 h-3.5" />
-                                        Build Station
+                                        Track Info
                                     </h3>
                                     <div className="flex items-center gap-2 text-sm font-bold text-white mb-2 truncate">
-                                        <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-purple-400" /> <span className="truncate max-w-[120px]">{(state.mapData?.cities || CITIES).find(c => c.id === confirmStationTrack.city1)?.name}</span></div>
+                                        <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-[#a87fff]" /> <span className="truncate max-w-[120px]">{(state.mapData?.cities || CITIES).find(c => c.id === confirmStationTrack.city1)?.name}</span></div>
                                         <span className="text-white/40 font-light">&rarr;</span>
-                                        <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-purple-400" /> <span className="truncate max-w-[120px]">{(state.mapData?.cities || CITIES).find(c => c.id === confirmStationTrack.city2)?.name}</span></div>
+                                        <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-[#a87fff]" /> <span className="truncate max-w-[120px]">{(state.mapData?.cities || CITIES).find(c => c.id === confirmStationTrack.city2)?.name}</span></div>
                                     </div>
-                                    <div className="text-xs text-[#a3a3a3] font-body bg-white/5 p-2 rounded-lg border border-white/5">
-                                        <p className="mb-1 text-[10px] leading-tight flex flex-col">
-                                            <span>Owned by <strong className="text-white capitalize">{state.tracks[confirmStationTrack.id]?.claimedBy}</strong>.</span>
-                                            <span className="text-white/50">Stations let you bypass their track.</span>
-                                        </p>
-                                        <p className="flex justify-between items-center mt-2 pt-2 border-t border-white/10">
-                                            <span>Station Cost:</span> <strong className="text-yellow-400">{4 - (state.players[currentTeam]?.stationsLeft || 0)} coins</strong>
-                                        </p>
-                                        {!stationCheck.possible && (
-                                            <p className="mt-2 text-red-400 font-bold border-t border-red-500/20 pt-2">{stationCheck.reason}</p>
+                                    <div className="text-xs text-[#a3a3a3] font-body bg-white/5 p-3 rounded-lg border border-white/5 flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <span>Claimed by:</span>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: state.tracks[confirmStationTrack.id]?.claimedBy || undefined, boxShadow: `0 0 6px ${state.tracks[confirmStationTrack.id]?.claimedBy || 'gray'}` }} />
+                                                <strong className="text-white capitalize text-sm">{state.tracks[confirmStationTrack.id]?.claimedBy || 'None'}</strong>
+                                            </div>
+                                        </div>
+                                        
+                                        {state.tracks[confirmStationTrack.id]?.stationedBy && (state.tracks[confirmStationTrack.id]?.stationedBy?.length || 0) > 0 && (
+                                            <div className="flex items-center justify-between border-t border-white/10 pt-2">
+                                                <span>Stations:</span>
+                                                <div className="flex flex-col gap-1 items-end">
+                                                    {state.tracks[confirmStationTrack.id]?.stationedBy?.map((team: string) => (
+                                                        <div key={team} className="flex items-center gap-2">
+                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: team }} />
+                                                            <strong className="text-white capitalize">{team}</strong>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
+
+                                        {(() => {
+                                            const trackStateForUI = state.tracks[confirmStationTrack.id];
+                                            const isOwnedByUs = trackStateForUI?.claimedBy === currentTeam;
+                                            const isStationedByUs = trackStateForUI?.stationedBy?.includes(currentTeam);
+                                            const canBuildHere = !isOwnedByUs && !isStationedByUs && !readOnly;
+                                            
+                                            if (canBuildHere) {
+                                                return (
+                                                    <div className="border-t border-white/10 pt-2 mt-1">
+                                                        <p className="flex justify-between items-center mb-1 text-[11px]">
+                                                            <span>Station Cost:</span> <strong className="text-yellow-400">{4 - (state.players[currentTeam]?.stationsLeft || 0)} coins</strong>
+                                                        </p>
+                                                        {!stationCheck.possible && (
+                                                            <p className="mt-1 text-red-400 font-bold border-t border-red-500/20 pt-1 text-[10px]">{stationCheck.reason}</p>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </div>
                                 </>
                             ) : null}
                         </div>
 
                         <div className="shrink-0 flex items-center gap-2 w-full mt-1">
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setConfirmTrack(null); setConfirmStationTrack(null); }}
-                                className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/5 transition-colors font-body text-white"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                disabled={confirmTrack ? !trackCheck.possible : !stationCheck.possible}
-                                onClick={(e) => { e.stopPropagation(); confirmTrack ? confirmBuildTrack() : confirmBuildStation(); }}
-                                className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all font-heading ${(confirmTrack ? !trackCheck.possible : !stationCheck.possible) ? "bg-white/10 text-white/40 cursor-not-allowed border border-white/5" : "bg-[#00f0ff] hover:bg-[#00f0ff]/80 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]"}`}
-                            >
-                                {confirmTrack ? "Claim" : "Build"}
-                            </button>
+                            {(() => {
+                                if (confirmTrack) {
+                                    return (
+                                        <>
+                                            <button onClick={(e) => { e.stopPropagation(); setConfirmTrack(null); }} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/5 transition-colors font-body text-white">Cancel</button>
+                                            <button disabled={!trackCheck.possible} onClick={(e) => { e.stopPropagation(); confirmBuildTrack(); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all font-heading ${(!trackCheck.possible) ? "bg-white/10 text-white/40 cursor-not-allowed border border-white/5" : "bg-[#00f0ff] hover:bg-[#00f0ff]/80 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]"}`}>Claim</button>
+                                        </>
+                                    );
+                                } else if (confirmStationTrack) {
+                                    const trackStateForUI = state.tracks[confirmStationTrack.id];
+                                    const isOwnedByUs = trackStateForUI?.claimedBy === currentTeam;
+                                    const isStationedByUs = trackStateForUI?.stationedBy?.includes(currentTeam);
+                                    const canBuildHere = !isOwnedByUs && !isStationedByUs && !readOnly;
+
+                                    if (canBuildHere) {
+                                        return (
+                                            <>
+                                                <button onClick={(e) => { e.stopPropagation(); setConfirmStationTrack(null); }} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/5 transition-colors font-body text-white">Close</button>
+                                                <button disabled={!stationCheck.possible} onClick={(e) => { e.stopPropagation(); confirmBuildStation(); }} className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all font-heading ${(!stationCheck.possible) ? "bg-white/10 text-white/40 cursor-not-allowed border border-white/5" : "bg-[#00f0ff] hover:bg-[#00f0ff]/80 text-black shadow-[0_0_15px_rgba(0,240,255,0.4)]"}`}>Build Station</button>
+                                            </>
+                                        );
+                                    } else {
+                                        return (
+                                            <button onClick={(e) => { e.stopPropagation(); setConfirmStationTrack(null); }} className="w-full px-3 py-2 rounded-lg text-xs font-semibold border border-white/20 hover:bg-white/5 transition-colors font-body text-white">Close</button>
+                                        );
+                                    }
+                                }
+                                return null;
+                            })()}
                         </div>
                     </motion.div>
                 )}
