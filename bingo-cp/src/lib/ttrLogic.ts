@@ -29,6 +29,18 @@ export function canBuildTrack(state: TTRState, player: TTRPlayerState, trackId: 
         return { possible: false, reason: "Track already claimed" };
     }
 
+    for (const otherTrackId in state.tracks) {
+        const ts = state.tracks[otherTrackId];
+        if (ts.claimedBy === player.team || (ts.stationedBy && ts.stationedBy.includes(player.team))) {
+            const otherTrack = findTrack(state, otherTrackId);
+            if (otherTrack && 
+                ((otherTrack.city1 === track.city1 && otherTrack.city2 === track.city2) ||
+                 (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
+                return { possible: false, reason: "You already own a track or station between these two cities" };
+            }
+        }
+    }
+
     // Check cost
     const cost = getTrackCost(track);
     if (player.coins < cost) {
@@ -93,6 +105,20 @@ export function canBuildStation(state: TTRState, player: TTRPlayerState, trackId
     // Check if player already has a station here
     if (trackState.stationedBy && trackState.stationedBy.includes(player.team)) {
         return { possible: false, reason: "You already have a station on this track" };
+    }
+
+    // Check if team already owns a track or station between these same two cities
+    for (const otherTrackId in state.tracks) {
+        if (otherTrackId === trackId) continue;
+        const ts = state.tracks[otherTrackId];
+        if (ts.claimedBy === player.team || (ts.stationedBy && ts.stationedBy.includes(player.team))) {
+            const otherTrack = findTrack(state, otherTrackId);
+            if (otherTrack && 
+                ((otherTrack.city1 === track.city1 && otherTrack.city2 === track.city2) ||
+                 (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
+                return { possible: false, reason: "You already own a track or station between these two cities" };
+            }
+        }
     }
 
     if (player.stationsLeft <= 0) {

@@ -192,7 +192,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                         const h = unit.height || 8;
                                         const fillColors = isClaimed ? [ownerColor, ...((trackState as any)?.stationedBy || [])] : [track.color || 'gray'];
                                         const colorCount = fillColors.length;
-                                        const stripeHeight = h / colorCount;
+                                        const stripeWidth = w / colorCount;
 
                                         return (
                                             <g key={idx} transform={`rotate(${unit.rotation}, ${unit.x}, ${unit.y})`}>
@@ -200,10 +200,10 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                                 {fillColors.map((c, i) => (
                                                     <rect
                                                         key={`stripe-${i}`}
-                                                        x={unit.x - w / 2}
-                                                        y={unit.y - h / 2 + i * stripeHeight}
-                                                        width={w}
-                                                        height={stripeHeight}
+                                                        x={unit.x - w / 2 + i * stripeWidth}
+                                                        y={unit.y - h / 2}
+                                                        width={stripeWidth}
+                                                        height={h}
                                                         fill={c}
                                                         className={`transition-all ${!isClaimed ? 'hover:fill-yellow-500 hover:opacity-80' : ''}`}
                                                     />
