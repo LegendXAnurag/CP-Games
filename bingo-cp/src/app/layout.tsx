@@ -4,6 +4,9 @@ import { Geist, Geist_Mono, DM_Serif_Display, Space_Grotesk, Inter, JetBrains_Mo
 import "./globals.css";
 import NavBar from "./components/NavBar";
 import SpotlightAurora from "@/components/SpotlightAurora";
+import Script from 'next/script';
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +55,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        {/* Google Analytics */}
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_ID}');
+          `}
+        </Script>
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} ${spaceGrotesk.variable} ${inter.variable} ${jetbrains.variable} antialiased dark`}
       >
