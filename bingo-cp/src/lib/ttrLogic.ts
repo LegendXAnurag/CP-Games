@@ -33,9 +33,9 @@ export function canBuildTrack(state: TTRState, player: TTRPlayerState, trackId: 
         const ts = state.tracks[otherTrackId];
         if (ts.claimedBy === player.team || (ts.stationedBy && ts.stationedBy.includes(player.team))) {
             const otherTrack = findTrack(state, otherTrackId);
-            if (otherTrack && 
+            if (otherTrack &&
                 ((otherTrack.city1 === track.city1 && otherTrack.city2 === track.city2) ||
-                 (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
+                    (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
                 return { possible: false, reason: "You already own a track or station between these two cities" };
             }
         }
@@ -113,9 +113,9 @@ export function canBuildStation(state: TTRState, player: TTRPlayerState, trackId
         const ts = state.tracks[otherTrackId];
         if (ts.claimedBy === player.team || (ts.stationedBy && ts.stationedBy.includes(player.team))) {
             const otherTrack = findTrack(state, otherTrackId);
-            if (otherTrack && 
+            if (otherTrack &&
                 ((otherTrack.city1 === track.city1 && otherTrack.city2 === track.city2) ||
-                 (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
+                    (otherTrack.city1 === track.city2 && otherTrack.city2 === track.city1))) {
                 return { possible: false, reason: "You already own a track or station between these two cities" };
             }
         }
@@ -223,7 +223,7 @@ export function calculateTotalScore(state: TTRState, teamColor: string): number 
 
     let totalScore = player.score;
 
-    for (const ticketId of player.destinations) {
+    for (const ticketId of (player.destinations || [])) {
         if (ticketId === 'optimistic_draw') continue;
         const ticket = getTicket(state, ticketId);
         if (ticket) {

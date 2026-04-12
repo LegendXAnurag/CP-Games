@@ -175,21 +175,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Deal tickets to players
         Object.keys(players).forEach(teamColor => {
             const playerDes: string[] = [];
+            const playerPending: string[] = [];
 
-            // Deal 1 long if available
+            // Deal 1 long if available (Mandatory)
             if (longTickets.length > 0) {
                 const t = longTickets.pop();
                 playerDes.push(t.id);
             }
 
-            // Deal 3 short if available
-            for (let k = 0; k < 3; k++) {
+            // Deal 6 short if available (Choices)
+            for (let k = 0; k < 6; k++) {
                 if (shortTickets.length > 0) {
                     const t = shortTickets.pop();
-                    playerDes.push(t.id);
+                    playerPending.push(t.id);
                 }
             }
             players[teamColor].destinations = playerDes;
+            players[teamColor].pendingDestinations = playerPending;
         });
 
         // Remaining deck (though not used for drawing anymore)

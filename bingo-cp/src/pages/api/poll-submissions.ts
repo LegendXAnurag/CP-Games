@@ -6,6 +6,7 @@ import { TTRParams, TTRState } from '@/app/types/match';
 import { buildEnrichedSolveLog } from '@/lib/enrichSolveLog';
 import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
 import { fetchReplacementProblem } from '@/lib/problemUtils';
+import { broadcastTtrUpdate } from '@/lib/pusherServer';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -75,6 +76,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (match.mode === 'ttr' && match.ttrState) {
       const state = match.ttrState as any;
+      const ttrParams = (match.ttrParams as any) || {};
+
+      // Auto-commit selection after 5 minutes
+      const gameStartedAt = new Date(match.startTime).getTime();
+      const fiveMinutesMs = 5 * 60 * 1000;
+      const isSelectionTimedOut = Date.now() - gameStartedAt > fiveMinutesMs;
+
+      let stateModified = false;
+      if (isSelectionTimedOut && state.players) {
+        Object.keys(state.players).forEach(teamColor => {
+          const p = state.players[teamColor];
+          if (p.pendingDestinations && p.pendingDestinations.length > 0) {
+            console.log(`[poll-submissions] Auto-committing tickets for ${teamColor} due to timeout`);
+            p.destinations = [...(p.destinations || []), ...p.pendingDestinations];
+            delete p.pendingDestinations;
+            stateModified = true;
+          }
+        });
+      }
+
+      if (stateModified) {
+        await prisma.match.update({
+          where: { id: matchId },
+          data: { ttrState: state }
+        });
+        await broadcastTtrUpdate(matchId, { action: 'ticketsAutoCommitted' });
+      }
+
       if (state.market && Array.isArray(state.market)) {
         for (const p of state.market) {
           problems.push({

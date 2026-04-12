@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from "@/app/lib/prisma";
 import { buildEnrichedSolveLog } from '@/lib/enrichSolveLog';
+import { broadcastTtrUpdate } from '@/lib/pusherServer';
 
 /**
  * POST /api/ttr/sync
@@ -53,6 +54,44 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(404).json({ error: 'Match not found' });
         }
 
+        // Auto-commit selection after 5 minutes
+        if (match.mode === 'ttr' && match.ttrState) {
+            const state = match.ttrState as any;
+            const gameStartedAt = new Date(match.startTime).getTime();
+            const fiveMinutesMs = 5 * 60 * 1000;
+            const isSelectionTimedOut = Date.now() - gameStartedAt > fiveMinutesMs;
+
+            let stateModified = false;
+            if (isSelectionTimedOut && state.players) {
+                Object.keys(state.players).forEach(teamColor => {
+                    const p = state.players[teamColor];
+                    if (p.pendingDestinations && p.pendingDestinations.length > 0) {
+                        console.log(`[sync] Auto-committing tickets for ${teamColor} due to timeout`);
+                        p.destinations = [...(p.destinations || []), ...p.pendingDestinations];
+                        delete p.pendingDestinations;
+                        stateModified = true;
+                    }
+                });
+            }
+
+            if (stateModified) {
+                const updatedMatch = await prisma.match.update({
+                    where: { id: matchId },
+                    data: { ttrState: state },
+                    include: {
+                        teams: {
+                            include: { members: { select: { id: true, handle: true, claimed: true, teamId: true } } },
+                        },
+                        solveLog: { include: { problem: true }, orderBy: { timestamp: 'desc' } },
+                        problems: { where: { active: true } },
+                    },
+                });
+                await broadcastTtrUpdate(matchId, { action: 'ticketsAutoCommitted' });
+                // Use the updated match for the rest of the handler
+                Object.assign(match, updatedMatch);
+            }
+        }
+
         // Mask sensitive TTR state
         let safeTtrState: any = match.ttrState;
         if (safeTtrState) {
@@ -67,9 +106,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                             state.players[teamColor].handCount = state.players[teamColor].hand.length;
                             delete state.players[teamColor].hand;
                         }
-                        if (state.players[teamColor].tickets) {
-                            state.players[teamColor].ticketsCount = state.players[teamColor].tickets.length;
-                            delete state.players[teamColor].tickets;
+                        // Unmasked: destinations is now public
+                        if (state.players[teamColor].pendingDestinations) {
+                            state.players[teamColor].pendingDestinationsCount = state.players[teamColor].pendingDestinations.length;
+                            delete state.players[teamColor].pendingDestinations;
                         }
                     }
                 });

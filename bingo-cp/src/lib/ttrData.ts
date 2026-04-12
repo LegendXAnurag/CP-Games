@@ -48,6 +48,7 @@ export const CITIES: City[] = [
     { id: 'sarajevo', name: 'Sarajevo', x: 56.94, y: 67.21 },
     { id: 'zagrab', name: 'Zagrab', x: 52.21, y: 57.01 },
     { id: 'milano', name: 'Milano', x: 38.99, y: 58.83 },
+    { id: 'smyrna', name: 'Smyrna', x: 76.50, y: 92.50 },
 ];
 
 export const TRACKS: Track[] = [
