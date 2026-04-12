@@ -453,10 +453,10 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         return TICKETS.find(t => t.id === id);
     }).filter(Boolean) as Ticket[] : [];
 
-    const pendingPool = player ? (player.pendingDestinations || []).filter(id => !discardedPendingIds.includes(id)).map((id: string) => {
-        if (ttrState.mapData?.tickets) return ttrState.mapData.tickets.find(t => t.id === id);
-        return TICKETS.find(t => t.id === id);
-    }).filter(Boolean) as Ticket[] : [];
+    const allPending = player?.pendingDestinations || [];
+    const totalPotential = confirmedTickets.length + allPending.length;
+    const keptCount = totalPotential - discardedPendingIds.length;
+    const canDiscardMore = keptCount > 3;
 
 
     return (
@@ -617,7 +617,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 ══════════════════════════════════════════════╗ */}
             {!isSpectator && (() => {
                 if (!player) return null;
-                if (confirmedTickets.length === 0 && pendingPool.length === 0) return null;
+                if (confirmedTickets.length === 0 && allPending.length === 0) return null;
 
 
                 const getCityName = (id: string) => {
@@ -642,11 +642,13 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                         </div>
                         <div className="w-px h-4 bg-white/10 shrink-0" />
                         <div className="flex items-center gap-2 flex-nowrap">
-                            {[...confirmedTickets, ...pendingPool].map(ticket => {
+                            {[...confirmedTickets, ...allPending.map(id => allTickets.find(t => t.id === id)).filter(Boolean) as Ticket[]].map(ticket => {
                                 const isPending = player.pendingDestinations?.includes(ticket.id);
-                                const isChosen = selectedPendingIds.includes(ticket.id);
+                                const isDiscarded = discardedPendingIds.includes(ticket.id);
                                 const isCompleted = !isPending && getCompletedRoute(ttrState, currentTeam, ticket.city1, ticket.city2) !== null;
                                 const isFocused = focusedTicket?.id === ticket.id;
+
+                                if (isDiscarded) return null;
 
                                 return (
                                     <button
@@ -666,9 +668,9 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                             border: '1px solid rgba(16,185,129,0.3)',
                                             color: '#34d399',
                                         } : isPending ? {
-                                            background: isChosen ? 'rgba(168,127,255,0.15)' : 'rgba(168,127,255,0.05)',
-                                            border: isChosen ? '1px solid #a87fff80' : '1px dashed rgba(168,127,255,0.3)',
-                                            color: isChosen ? '#c4a8ff' : '#a87fff90',
+                                            background: 'rgba(168,127,255,0.15)',
+                                            border: '1px solid #a87fff80',
+                                            color: '#c4a8ff',
                                         } : {
                                             background: 'rgba(255,255,255,0.04)',
                                             border: '1px solid rgba(255,255,255,0.1)',
@@ -676,13 +678,13 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                         }}
                                     >
                                         {isCompleted && <CheckCircle2 className="w-3 h-3" />}
-                                        {isPending && isChosen && <div className="w-1.5 h-1.5 rounded-full bg-[#a87fff] animate-pulse" />}
+                                        {isPending && <div className="w-1.5 h-1.5 rounded-full bg-[#a87fff] animate-pulse" />}
                                         <span>{getCityName(ticket.city1)}</span>
                                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>→</span>
                                         <span>{getCityName(ticket.city2)}</span>
                                         <span
                                             className="ml-1 font-mono tabular-nums text-[10px]"
-                                            style={{ color: isFocused ? '#c4a8ff' : isCompleted ? '#34d399' : (isPending && !isChosen) ? '#a87fff' : '#eab308', opacity: 0.9 }}
+                                            style={{ color: isFocused ? '#c4a8ff' : isCompleted ? '#34d399' : isPending ? '#a87fff' : '#eab308', opacity: 0.9 }}
                                         >
                                             {ticket.points}pts{isPending ? '?' : ''}
                                         </span>
@@ -695,15 +697,15 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 <>
                                     <div className="w-px h-4 bg-white/10 shrink-0 mx-2" />
                                     <button
-                                        disabled={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 || isSubmittingTickets}
+                                        disabled={keptCount < 3 || isSubmittingTickets}
                                         onClick={handleSelectTickets}
-                                        title={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 ? "Must keep at least 3 tickets total (including long route)" : "Finalize ticket selection"}
-                                        className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) >= 3
+                                        title={keptCount < 3 ? "Must keep at least 3 tickets total" : "Finalize selection"}
+                                        className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${keptCount >= 3
                                             ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
                                             : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                                             }`}
                                     >
-                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length})`}
+                                        {isSubmittingTickets ? '...' : `Confirm (${keptCount})`}
                                     </button>
                                 </>
                             )}
@@ -958,14 +960,14 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             {isLeader && ttrState.players[currentTeam]?.pendingDestinations && ttrState.players[currentTeam].pendingDestinations!.length > 0 && (
                                 <div className="ml-4 pl-4 border-l border-white/10">
                                     <button
-                                        disabled={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 || isSubmittingTickets}
+                                        disabled={keptCount < 3 || isSubmittingTickets}
                                         onClick={handleSelectTickets}
-                                        className={`px-4 py-2 rounded-xl text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) >= 3
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${keptCount >= 3
                                             ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
                                             : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                                             }`}
                                     >
-                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length})`}
+                                        {isSubmittingTickets ? '...' : `Confirm (${keptCount})`}
                                     </button>
                                 </div>
                             )}
