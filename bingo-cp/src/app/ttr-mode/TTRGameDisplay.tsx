@@ -250,7 +250,12 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     }, [match.id, isLoading, syncState]);
 
     const handleSelectTickets = async () => {
-        if (selectedPendingIds.length < 3) return;
+        const pool = ttrState?.players[currentTeam]?.pendingDestinations || [];
+        const keptIds = pool.filter(id => !discardedPendingIds.includes(id));
+        const totalCount = (ttrState?.players[currentTeam]?.destinations?.length || 0) + keptIds.length;
+
+        if (totalCount < 3) return;
+
         setIsSubmittingTickets(true);
         try {
             const res = await fetch('/api/ttr/selectTickets', {
@@ -259,7 +264,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 body: JSON.stringify({
                     matchId: match.id,
                     token: user?.token,
-                    selectedIds: selectedPendingIds
+                    selectedIds: keptIds
                 }),
             });
             if (res.ok) {
@@ -274,6 +279,36 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
             setIsSubmittingTickets(false);
         }
     };
+
+    const updateRemoteDraft = async (discardedIds: string[]) => {
+        if (!user?.token || !isLeader) return;
+        try {
+            await fetch('/api/ttr/updateDraft', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    matchId: match.id,
+                    token: user.token,
+                    discardedIds
+                }),
+            });
+        } catch (err) {
+            console.error('Failed to sync draft:', err);
+        }
+    };
+
+    // Keep local state in sync with server draft (if user refreshes)
+    useEffect(() => {
+        const player = ttrState?.players[currentTeam];
+        if (player?.pendingDiscarded) {
+            setDiscardedPendingIds(player.pendingDiscarded);
+            // Also ensure selected reflects what's NOT discarded
+            if (player.pendingDestinations) {
+                const autoSelected = player.pendingDestinations.filter(id => !player.pendingDiscarded!.includes(id));
+                setSelectedPendingIds(autoSelected);
+            }
+        }
+    }, [ttrState?.players, currentTeam]);
 
     // ── Slow CF solve check (every 65s) — runs Codeforces API fetch ───────────
     useEffect(() => {
@@ -660,14 +695,15 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 <>
                                     <div className="w-px h-4 bg-white/10 shrink-0 mx-2" />
                                     <button
-                                        disabled={confirmedTickets.length + selectedPendingIds.length < 3 || isSubmittingTickets}
+                                        disabled={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 || isSubmittingTickets}
                                         onClick={handleSelectTickets}
-                                        className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${confirmedTickets.length + selectedPendingIds.length >= 3
+                                        title={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 ? "Must keep at least 3 tickets total (including long route)" : "Finalize ticket selection"}
+                                        className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) >= 3
                                             ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
                                             : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                                             }`}
                                     >
-                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + selectedPendingIds.length})`}
+                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length})`}
                                     </button>
                                 </>
                             )}
@@ -881,34 +917,34 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 <div className="flex items-center gap-2 ml-4 pl-4 border-l border-white/10">
                                     {isLeader ? (
                                         <>
-                                            {!selectedPendingIds.includes(focusedTicket.id) ? (
+                                            {!discardedPendingIds.includes(focusedTicket.id) ? (
                                                 <button
                                                     onClick={() => {
-                                                        setSelectedPendingIds(prev => [...prev, focusedTicket.id]);
-                                                        setDiscardedPendingIds(prev => prev.filter(id => id !== focusedTicket.id));
+                                                        const newDiscarded = [...discardedPendingIds, focusedTicket.id];
+                                                        setDiscardedPendingIds(newDiscarded);
+                                                        updateRemoteDraft(newDiscarded);
+                                                        setFocusedTicket(null);
                                                     }}
-                                                    className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500/30 transition-colors"
+                                                    disabled={confirmedTickets.length + (player?.pendingDestinations?.length || 0) - discardedPendingIds.length <= 3}
+                                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${confirmedTickets.length + (player?.pendingDestinations?.length || 0) - discardedPendingIds.length > 3
+                                                        ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
+                                                        : 'bg-white/5 text-white/10 border border-white/5 cursor-not-allowed'
+                                                        }`}
                                                 >
-                                                    Select
+                                                    Discard
                                                 </button>
                                             ) : (
                                                 <button
-                                                    onClick={() => setSelectedPendingIds(prev => prev.filter(id => id !== focusedTicket.id))}
-                                                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-600 transition-colors"
+                                                    onClick={() => {
+                                                        const newDiscarded = discardedPendingIds.filter(id => id !== focusedTicket.id);
+                                                        setDiscardedPendingIds(newDiscarded);
+                                                        updateRemoteDraft(newDiscarded);
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-red-600 transition-colors"
                                                 >
-                                                    Selected
+                                                    Discarded
                                                 </button>
                                             )}
-                                            <button
-                                                onClick={() => {
-                                                    setDiscardedPendingIds(prev => [...prev, focusedTicket.id]);
-                                                    setSelectedPendingIds(prev => prev.filter(id => id !== focusedTicket.id));
-                                                    setFocusedTicket(null);
-                                                }}
-                                                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-bold uppercase tracking-wider hover:bg-red-500/30 transition-colors"
-                                            >
-                                                Discard
-                                            </button>
                                         </>
                                     ) : (
                                         <span className="text-[9px] text-white/30 italic uppercase tracking-widest px-2">
@@ -922,14 +958,14 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             {isLeader && ttrState.players[currentTeam]?.pendingDestinations && ttrState.players[currentTeam].pendingDestinations!.length > 0 && (
                                 <div className="ml-4 pl-4 border-l border-white/10">
                                     <button
-                                        disabled={confirmedTickets.length + selectedPendingIds.length < 3 || isSubmittingTickets}
+                                        disabled={(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) < 3 || isSubmittingTickets}
                                         onClick={handleSelectTickets}
-                                        className={`px-4 py-2 rounded-xl text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${confirmedTickets.length + selectedPendingIds.length >= 3
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${(confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length) >= 3
                                             ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
                                             : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
                                             }`}
                                     >
-                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + selectedPendingIds.length})`}
+                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + (ttrState.players[currentTeam].pendingDestinations?.length || 0) - discardedPendingIds.length})`}
                                     </button>
                                 </div>
                             )}

@@ -64,8 +64,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ error: 'Invalid ticket selection' });
         }
 
-        if (selectedIds.length < 3) {
-            return res.status(400).json({ error: 'Must select at least 3 tickets' });
+        const totalCount = (player.destinations?.length || 0) + selectedIds.length;
+        if (totalCount < 3) {
+            return res.status(400).json({ error: 'Must select at least 3 tickets total (including mandatory long route)' });
         }
 
         // Move selected to destinations, clear pending

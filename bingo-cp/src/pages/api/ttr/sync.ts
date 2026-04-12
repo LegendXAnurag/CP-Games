@@ -67,8 +67,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     const p = state.players[teamColor];
                     if (p.pendingDestinations && p.pendingDestinations.length > 0) {
                         console.log(`[sync] Auto-committing tickets for ${teamColor} due to timeout`);
-                        p.destinations = [...(p.destinations || []), ...p.pendingDestinations];
+
+                        const discarded = p.pendingDiscarded || [];
+                        let kept = p.pendingDestinations.filter((id: string) => !discarded.includes(id));
+
+                        // Enforce 3-route minimum total
+                        let total = (p.destinations?.length || 0) + kept.length;
+                        if (total < 3) {
+                            // Need to pull some back from discarded
+                            for (const id of discarded) {
+                                if (total >= 3) break;
+                                kept.push(id);
+                                total++;
+                            }
+                        }
+
+                        p.destinations = [...(p.destinations || []), ...kept];
                         delete p.pendingDestinations;
+                        delete p.pendingDiscarded;
                         stateModified = true;
                     }
                 });

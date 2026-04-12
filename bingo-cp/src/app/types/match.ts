@@ -91,6 +91,7 @@ export interface TTRPlayerState {
   routes: string[];
   destinations: string[]; // IDs of owned tickets
   pendingDestinations?: string[]; // IDs of optional tickets to choose from
+  pendingDiscarded?: string[]; // IDs of optional tickets marked as discarded in draft
   stationsLeft: number;
 }
 
