@@ -6,10 +6,10 @@ let pusherInstance: Pusher | null = null;
 export function getPusherServer(): Pusher {
     if (!pusherInstance) {
         pusherInstance = new Pusher({
-            appId: process.env.PUSHER_APP_ID!,
-            key: process.env.NEXT_PUBLIC_PUSHER_KEY!,
-            secret: process.env.PUSHER_SECRET!,
-            cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+            appId: (process.env.app_id || process.env.PUSHER_APP_ID)!.trim(),
+            key: (process.env.key || process.env.NEXT_PUBLIC_PUSHER_KEY)!.trim(),
+            secret: (process.env.secret || process.env.PUSHER_SECRET)!.trim(),
+            cluster: (process.env.cluster || process.env.NEXT_PUBLIC_PUSHER_CLUSTER)!.trim(),
             useTLS: true,
         });
     }

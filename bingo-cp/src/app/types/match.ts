@@ -90,6 +90,7 @@ export interface TTRPlayerState {
   score: number;
   routes: string[];
   destinations: string[]; // IDs of owned tickets
+  pendingDestinations?: string[]; // IDs of optional tickets to choose from
   stationsLeft: number;
 }
 

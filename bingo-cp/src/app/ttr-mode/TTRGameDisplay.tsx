@@ -8,7 +8,7 @@ import { calculateTotalScore, getCompletedRoute } from "../../lib/ttrLogic";
 import { TICKETS, CITIES } from "../../lib/ttrData";
 import { AuthProvider, useTtrAuth } from "../ttr/AuthContext";
 import JoinScreen from "../ttr/JoinScreen";
-import { TrainFront, MapPin, CheckCircle2, Ticket as TicketIcon } from "lucide-react";
+import { TrainFront, MapPin, CheckCircle2, Ticket as TicketIcon, Clock } from "lucide-react";
 import { getPusherClient } from "@/lib/pusherClient";
 import { motion } from "framer-motion";
 
@@ -56,6 +56,14 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const [showFinalLapPopup, setShowFinalLapPopup] = useState(false);
     const prevFinalLapRef = useRef(ttrState?.finalLapEndTime);
 
+    // Ticket selection state
+    const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+    const [discardedPendingIds, setDiscardedPendingIds] = useState<string[]>([]);
+    const [isSubmittingTickets, setIsSubmittingTickets] = useState(false);
+
+    const currentTeamObj = match.teams.find(t => t.color === currentTeam);
+    const isLeader = currentTeamObj?.members[0]?.handle === user?.handle;
+
     useEffect(() => {
         if (!prevFinalLapRef.current && ttrState?.finalLapEndTime) {
             setShowFinalLapPopup(true);
@@ -85,7 +93,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         const player = ttrState.players[currentTeam];
         if (!player) return;
 
-        const allTickets = player.destinations.map((id: string) => {
+        const allTickets = (player.destinations || []).map((id: string) => {
             if (ttrState.mapData?.tickets) return ttrState.mapData.tickets.find(t => t.id === id);
             return TICKETS.find(t => t.id === id);
         }).filter(Boolean) as Ticket[];
@@ -241,6 +249,32 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         };
     }, [match.id, isLoading, syncState]);
 
+    const handleSelectTickets = async () => {
+        if (selectedPendingIds.length < 3) return;
+        setIsSubmittingTickets(true);
+        try {
+            const res = await fetch('/api/ttr/selectTickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    matchId: match.id,
+                    token: user?.token,
+                    selectedIds: selectedPendingIds
+                }),
+            });
+            if (res.ok) {
+                syncState();
+            } else {
+                const data = await res.json();
+                alert(data.error || 'Failed to select tickets');
+            }
+        } catch (err) {
+            console.error('Error selecting tickets:', err);
+        } finally {
+            setIsSubmittingTickets(false);
+        }
+    };
+
     // ── Slow CF solve check (every 65s) — runs Codeforces API fetch ───────────
     useEffect(() => {
         if (isLoading || !user?.token || isMatchEnded) return; // spectators, unauthenticated, or if match ended
@@ -355,7 +389,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         const baseScore = calculateTotalScore(ttrState, p.team);
         let penalty = 0;
 
-        for (const ticketId of p.destinations) {
+        for (const ticketId of (p.destinations || [])) {
             if (ticketId === 'optimistic_draw') continue;
             const ticket = allTickets.find(t => t.id === ticketId);
             if (ticket) {
@@ -378,16 +412,28 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         };
     }).sort((a: any, b: any) => b.displayScore - a.displayScore);
 
+    const player = ttrState.players[currentTeam];
+    const confirmedTickets = player ? (player.destinations || []).map((id: string) => {
+        if (ttrState.mapData?.tickets) return ttrState.mapData.tickets.find(t => t.id === id);
+        return TICKETS.find(t => t.id === id);
+    }).filter(Boolean) as Ticket[] : [];
+
+    const pendingPool = player ? (player.pendingDestinations || []).filter(id => !discardedPendingIds.includes(id)).map((id: string) => {
+        if (ttrState.mapData?.tickets) return ttrState.mapData.tickets.find(t => t.id === id);
+        return TICKETS.find(t => t.id === id);
+    }).filter(Boolean) as Ticket[] : [];
+
+
     return (
-        <div className="flex flex-col bg-[#050505] h-full overflow-y-auto w-full max-w-[1600px] mx-auto">
+        <div className="flex flex-col bg-[#050505] h-full overflow-y-auto w-full">
 
             {/* ╔══════════════════════════════════════════════
                     HEADER ROW — 56px
                 ══════════════════════════════════════════════╗ */}
             <div
-                className="flex items-center justify-between px-4 gap-3 shrink-0"
+                className="flex items-center justify-between px-6 gap-3 shrink-0"
                 style={{
-                    height: '56px',
+                    height: '64px',
                     background: 'rgba(5,5,5,0.96)',
                     borderBottom: '1px solid rgba(0,240,255,0.08)',
                     backdropFilter: 'blur(12px)',
@@ -397,7 +443,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 <div className="flex items-center gap-2 shrink-0">
                     <TrainFront className="w-4 h-4 text-emerald-400" />
                     <span
-                        className="text-xs font-bold uppercase tracking-widest font-heading"
+                        className="text-sm font-black uppercase tracking-widest font-heading"
                         style={{ color: '#10b981' }}
                     >
                         Ticket to Ride
@@ -408,7 +454,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 {/* Center: Timer */}
                 <div className="flex-1 flex justify-center items-center">
                     <span
-                        className="text-2xl font-mono font-bold tabular-nums tracking-widest font-mono"
+                        className="text-3xl font-mono font-black tabular-nums tracking-widest font-mono"
                         style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}60` }}
                     >
                         {isMatchEnded ? "ENDED" : formatTime(msLeft)}
@@ -477,12 +523,12 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 {players.map((player: any, idx: number) => {
                     const color = COLOR_HEX[player.team?.toLowerCase()] || '#6b7280';
                     const isLeader = idx === 0 && players.length > 1;
-                    const playerTickets = player.destinations.map((id: string) => allTickets.find(t => t.id === id)).filter(Boolean) as Ticket[];
+                    const playerTickets = (player.destinations || []).map((id: string) => allTickets.find(t => t.id === id)).filter(Boolean) as Ticket[];
 
                     return (
                         <div
                             key={player.team}
-                            className="flex items-center gap-3 px-4 py-2"
+                            className="flex items-center gap-4 px-6 py-3"
                             style={{
                                 borderLeft: `3px solid ${color}`,
                                 borderBottom: idx < players.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
@@ -494,21 +540,21 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 className="w-2 h-2 rounded-full shrink-0"
                                 style={{ backgroundColor: color, boxShadow: isLeader ? `0 0 6px ${color}` : 'none' }}
                             />
-                            <span className="text-[11px] font-bold uppercase tracking-wider font-heading min-w-[60px]" style={{ color: isLeader ? color : '#d4d4d4' }}>
+                            <span className="text-[13px] font-bold uppercase tracking-wider font-heading min-w-[70px]" style={{ color: isLeader ? color : '#d4d4d4' }}>
                                 {player.team}
                             </span>
                             {isLeader && (
-                                <span className="text-[8px] font-bold px-1 py-0.5 rounded font-heading shrink-0" style={{ background: `${color}25`, color }}>LEAD</span>
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded font-heading shrink-0" style={{ background: `${color}25`, color }}>LEAD</span>
                             )}
                             {/* Score */}
-                            <span className="text-[12px] font-black font-mono tabular-nums shrink-0" style={{ color }}>{player.displayScore}</span>
-                            <span className="text-[9px] text-white/30 font-heading shrink-0">pts</span>
+                            <span className="text-[14px] font-black font-mono tabular-nums shrink-0" style={{ color }}>{player.displayScore}</span>
+                            <span className="text-[10px] text-white/30 font-heading shrink-0">pts</span>
                             {/* Separator */}
-                            <div className="w-px h-3 bg-white/10 shrink-0 mx-1" />
+                            <div className="w-px h-4 bg-white/10 shrink-0 mx-2" />
                             {/* Compact stats */}
-                            <span className="text-[10px] font-mono shrink-0" style={{ color: '#eab308' }}>🪙{player.coins}</span>
-                            <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#60a5fa' }}>🚂{player.trainsLeft}</span>
-                            <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#f87171' }}>🏠{player.stationsLeft}</span>
+                            <span className="text-[12px] font-mono shrink-0" style={{ color: '#eab308' }}>🪙{player.coins}</span>
+                            <span className="text-[12px] font-mono shrink-0 ml-2" style={{ color: '#60a5fa' }}>🚂{player.trainsLeft}</span>
+                            <span className="text-[12px] font-mono shrink-0 ml-2" style={{ color: '#f87171' }}>🏠{player.stationsLeft}</span>
 
                             {/* Tickets */}
                             <div className="flex gap-1.5 ml-auto shrink-0 flex-wrap justify-end pl-4">
@@ -535,17 +581,9 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     TICKET TABS — above the map (non-spectator only)
                 ══════════════════════════════════════════════╗ */}
             {!isSpectator && (() => {
-                const player = ttrState.players[currentTeam];
                 if (!player) return null;
+                if (confirmedTickets.length === 0 && pendingPool.length === 0) return null;
 
-                const myTickets = player.destinations.map((id: string) => {
-                    if (ttrState.mapData?.tickets) {
-                        return ttrState.mapData.tickets.find(t => t.id === id);
-                    }
-                    return TICKETS.find(t => t.id === id);
-                }).filter(Boolean) as Ticket[];
-
-                if (myTickets.length === 0) return null;
 
                 const getCityName = (id: string) => {
                     if (id === 'optimistic_draw') return '...';
@@ -555,7 +593,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
 
                 return (
                     <div
-                        className="shrink-0 flex items-center gap-2 px-4 py-2 overflow-x-auto"
+                        className="shrink-0 flex items-center gap-2 px-6 py-2.5 overflow-x-auto"
                         style={{
                             borderTop: '1px solid rgba(168,127,255,0.15)',
                             borderBottom: '1px solid rgba(168,127,255,0.1)',
@@ -563,32 +601,39 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             scrollbarWidth: 'none',
                         }}
                     >
-                        <div className="flex items-center gap-1.5 text-[#a87fff] shrink-0 mr-1">
-                            <TicketIcon className="w-3.5 h-3.5" />
-                            <span className="text-[10px] uppercase tracking-widest font-bold font-heading">Tickets</span>
+                        <div className="flex items-center gap-1.5 text-[#a87fff] shrink-0 mr-2">
+                            <TicketIcon className="w-4 h-4" />
+                            <span className="text-[11px] uppercase tracking-widest font-black font-heading">Tickets</span>
                         </div>
                         <div className="w-px h-4 bg-white/10 shrink-0" />
                         <div className="flex items-center gap-2 flex-nowrap">
-                            {myTickets.map(ticket => {
-                                const isCompleted = getCompletedRoute(ttrState, currentTeam, ticket.city1, ticket.city2) !== null;
+                            {[...confirmedTickets, ...pendingPool].map(ticket => {
+                                const isPending = player.pendingDestinations?.includes(ticket.id);
+                                const isChosen = selectedPendingIds.includes(ticket.id);
+                                const isCompleted = !isPending && getCompletedRoute(ttrState, currentTeam, ticket.city1, ticket.city2) !== null;
                                 const isFocused = focusedTicket?.id === ticket.id;
+
                                 return (
                                     <button
                                         key={ticket.id}
                                         onClick={() => {
-                                            userClearedFocusRef.current = isFocused; // mark as user-cleared if deselecting
+                                            userClearedFocusRef.current = isFocused;
                                             setFocusedTicketRaw(isFocused ? null : ticket);
                                         }}
-                                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold font-heading transition-all duration-200 whitespace-nowrap"
+                                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold font-heading transition-all duration-300 whitespace-nowrap group"
                                         style={isFocused ? {
-                                            background: 'rgba(168,127,255,0.2)',
-                                            border: '1px solid rgba(168,127,255,0.6)',
+                                            background: isPending ? 'rgba(168,127,255,0.25)' : 'rgba(168,127,255,0.2)',
+                                            border: isPending ? '1.5px solid #a87fff' : '1px solid rgba(168,127,255,0.6)',
                                             color: '#c4a8ff',
-                                            boxShadow: '0 0 12px rgba(168,127,255,0.2)',
+                                            boxShadow: '0 0 15px rgba(168,127,255,0.3)',
                                         } : isCompleted ? {
                                             background: 'rgba(16,185,129,0.08)',
                                             border: '1px solid rgba(16,185,129,0.3)',
                                             color: '#34d399',
+                                        } : isPending ? {
+                                            background: isChosen ? 'rgba(168,127,255,0.15)' : 'rgba(168,127,255,0.05)',
+                                            border: isChosen ? '1px solid #a87fff80' : '1px dashed rgba(168,127,255,0.3)',
+                                            color: isChosen ? '#c4a8ff' : '#a87fff90',
                                         } : {
                                             background: 'rgba(255,255,255,0.04)',
                                             border: '1px solid rgba(255,255,255,0.1)',
@@ -596,18 +641,36 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                         }}
                                     >
                                         {isCompleted && <CheckCircle2 className="w-3 h-3" />}
+                                        {isPending && isChosen && <div className="w-1.5 h-1.5 rounded-full bg-[#a87fff] animate-pulse" />}
                                         <span>{getCityName(ticket.city1)}</span>
                                         <span style={{ color: 'rgba(255,255,255,0.3)' }}>→</span>
                                         <span>{getCityName(ticket.city2)}</span>
                                         <span
                                             className="ml-1 font-mono tabular-nums text-[10px]"
-                                            style={{ color: isFocused ? '#c4a8ff' : isCompleted ? '#34d399' : '#eab308', opacity: 0.9 }}
+                                            style={{ color: isFocused ? '#c4a8ff' : isCompleted ? '#34d399' : (isPending && !isChosen) ? '#a87fff' : '#eab308', opacity: 0.9 }}
                                         >
-                                            {ticket.points}pts
+                                            {ticket.points}pts{isPending ? '?' : ''}
                                         </span>
                                     </button>
                                 );
                             })}
+
+                            {/* Confirm All Selection Button — Right in the bar */}
+                            {isLeader && ttrState.players[currentTeam]?.pendingDestinations && ttrState.players[currentTeam].pendingDestinations!.length > 0 && (
+                                <>
+                                    <div className="w-px h-4 bg-white/10 shrink-0 mx-2" />
+                                    <button
+                                        disabled={confirmedTickets.length + selectedPendingIds.length < 3 || isSubmittingTickets}
+                                        onClick={handleSelectTickets}
+                                        className={`shrink-0 px-4 py-1.5 rounded-full text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${confirmedTickets.length + selectedPendingIds.length >= 3
+                                            ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
+                                            : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
+                                            }`}
+                                    >
+                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + selectedPendingIds.length})`}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 );
@@ -621,13 +684,38 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 className="w-full relative overflow-hidden"
                 style={{
                     borderTop: '1px solid rgba(0,240,255,0.04)',
-                    // Take up as much of the remaining viewport as possible.
-                    // The outer container is scrollable; this div just needs to be tall.
-                    // header(56) + scorecard(44) + ticket-bar(~36) = ~136px consumed above.
                     minHeight: 'calc(100vh - 64px - 136px)',
                     flex: '1 1 auto',
                 }}
             >
+                {/* Route Selection Timer Overlay */}
+                {player?.pendingDestinations && player.pendingDestinations.length > 0 && (() => {
+                    const gameStartedAt = new Date(match.startTime).getTime();
+                    const selectionDeadline = gameStartedAt + 5 * 60 * 1000;
+                    const selectionMsLeft = selectionDeadline - now.getTime();
+                    if (selectionMsLeft <= 0) return null;
+
+                    return (
+                        <motion.div
+                            drag
+                            dragMomentum={false}
+                            className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center pointer-events-auto cursor-grab active:cursor-grabbing animate-in fade-in slide-in-from-top duration-700"
+                        >
+                            <div className="bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/30 px-6 py-2.5 rounded-[24px] flex items-center gap-4 shadow-[0_20px_60px_rgba(0,0,0,0.4),0_0_20px_rgba(16,185,129,0.1)]">
+                                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
+                                    <Clock className="w-5 h-5 text-emerald-400 animate-pulse" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase tracking-[0.2em] text-emerald-400/60 font-black leading-none mb-1">Auto-Confirming In</span>
+                                    <span className="text-2xl font-mono font-black text-white tabular-nums tracking-wider" style={{ textShadow: '0 0 20px rgba(16,185,129,0.3)' }}>
+                                        {Math.floor(selectionMsLeft / 60000)}:{(Math.floor(selectionMsLeft / 1000) % 60).toString().padStart(2, '0')}
+                                    </span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    );
+                })()}
+
                 <TTRMap
                     matchId={match.id}
                     state={ttrState}
@@ -777,7 +865,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                     }}
                                 >
                                     {isCompleted ? <CheckCircle2 className="w-3 h-3" /> : null}
-                                    {isCompleted ? 'DONE' : `+${focusedTicket.points} pts`}
+                                    {isCompleted ? 'DONE' : `+${focusedTicket.points} pts${ttrState.players[currentTeam]?.pendingDestinations?.includes(focusedTicket.id) ? '?' : ''}`}
                                 </div>
                             </div>
 
@@ -787,6 +875,64 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 <span className="text-xs font-bold text-white font-heading">{getCityName(focusedTicket.city2)}</span>
                                 <span className="text-[9px] text-white/40 uppercase tracking-widest font-heading">Destination</span>
                             </div>
+
+                            {/* Selection Controls for Pending Tickets */}
+                            {focusedTicket && ttrState.players[currentTeam]?.pendingDestinations?.includes(focusedTicket.id) && (
+                                <div className="flex items-center gap-2 ml-4 pl-4 border-l border-white/10">
+                                    {isLeader ? (
+                                        <>
+                                            {!selectedPendingIds.includes(focusedTicket.id) ? (
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedPendingIds(prev => [...prev, focusedTicket.id]);
+                                                        setDiscardedPendingIds(prev => prev.filter(id => id !== focusedTicket.id));
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500/30 transition-colors"
+                                                >
+                                                    Select
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setSelectedPendingIds(prev => prev.filter(id => id !== focusedTicket.id))}
+                                                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-600 transition-colors"
+                                                >
+                                                    Selected
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    setDiscardedPendingIds(prev => [...prev, focusedTicket.id]);
+                                                    setSelectedPendingIds(prev => prev.filter(id => id !== focusedTicket.id));
+                                                    setFocusedTicket(null);
+                                                }}
+                                                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-bold uppercase tracking-wider hover:bg-red-500/30 transition-colors"
+                                            >
+                                                Discard
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <span className="text-[9px] text-white/30 italic uppercase tracking-widest px-2">
+                                            Leader only
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Confirm All Selection Button */}
+                            {isLeader && ttrState.players[currentTeam]?.pendingDestinations && ttrState.players[currentTeam].pendingDestinations!.length > 0 && (
+                                <div className="ml-4 pl-4 border-l border-white/10">
+                                    <button
+                                        disabled={confirmedTickets.length + selectedPendingIds.length < 3 || isSubmittingTickets}
+                                        onClick={handleSelectTickets}
+                                        className={`px-4 py-2 rounded-xl text-[10px] font-black font-heading uppercase tracking-widest transition-all duration-300 ${confirmedTickets.length + selectedPendingIds.length >= 3
+                                            ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95'
+                                            : 'bg-white/5 text-white/20 cursor-not-allowed border border-white/10'
+                                            }`}
+                                    >
+                                        {isSubmittingTickets ? '...' : `Confirm (${confirmedTickets.length + selectedPendingIds.length})`}
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Close button */}
                             <button
@@ -866,8 +1012,6 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     )}
                 </div>
             </div>
-
-
         </div>
     );
 }
