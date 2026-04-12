@@ -854,7 +854,16 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                                 {entry.timestamp && (
                                                     <>
                                                         <span className="text-white/40">·</span>
-                                                        <span className="font-mono text-[9px] text-[#6b7280]">{entry.timestamp}</span>
+                                                        {(() => {
+                                                            let formattedTime = entry.timestamp;
+                                                            try {
+                                                                const d = new Date(entry.timestamp);
+                                                                if (!isNaN(d.getTime())) {
+                                                                    formattedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                                                }
+                                                            } catch (e) {}
+                                                            return <span className="font-mono text-[9px] text-[#6b7280]">{formattedTime}</span>;
+                                                        })()}
                                                     </>
                                                 )}
                                             </p>
