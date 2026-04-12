@@ -701,13 +701,13 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             dragMomentum={false}
                             className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center pointer-events-auto cursor-grab active:cursor-grabbing animate-in fade-in slide-in-from-top duration-700"
                         >
-                            <div className="bg-emerald-500/10 backdrop-blur-xl border border-emerald-500/30 px-6 py-2.5 rounded-[24px] flex items-center gap-4 shadow-[0_20px_60px_rgba(0,0,0,0.4),0_0_20px_rgba(16,185,129,0.1)]">
-                                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30">
-                                    <Clock className="w-5 h-5 text-emerald-400 animate-pulse" />
+                            <div className="bg-[#050505] backdrop-blur-xl border border-[#00f0ff]/30 px-6 py-2.5 rounded-[24px] flex items-center gap-4 shadow-[0_20px_60px_rgba(0,0,0,0.4),0_0_20px_rgba(0,240,255,0.1)]">
+                                <div className="w-10 h-10 rounded-full bg-[#00f0ff]/10 flex items-center justify-center border border-[#00f0ff]/20">
+                                    <Clock className="w-5 h-5 text-[#00f0ff] animate-pulse" />
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase tracking-[0.2em] text-emerald-400/60 font-black leading-none mb-1">Auto-Confirming In</span>
-                                    <span className="text-2xl font-mono font-black text-white tabular-nums tracking-wider" style={{ textShadow: '0 0 20px rgba(16,185,129,0.3)' }}>
+                                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#00f0ff]/60 font-black leading-none mb-1">Auto-Confirming In</span>
+                                    <span className="text-2xl font-mono font-black text-[#00f0ff] tabular-nums tracking-wider" style={{ textShadow: '0 0 20px rgba(0,240,255,0.3)' }}>
                                         {Math.floor(selectionMsLeft / 60000)}:{(Math.floor(selectionMsLeft / 1000) % 60).toString().padStart(2, '0')}
                                     </span>
                                 </div>
@@ -1007,7 +1007,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                                                 if (!isNaN(d.getTime())) {
                                                                     formattedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                                                                 }
-                                                            } catch (e) {}
+                                                            } catch (e) { }
                                                             return <span className="font-mono text-[9px] text-[#6b7280]">{formattedTime}</span>;
                                                         })()}
                                                     </>
