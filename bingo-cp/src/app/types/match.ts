@@ -2,7 +2,7 @@ export interface Match {
   id: string;
   startTime: string;
   durationMinutes: number;
-  mode: "classic" | "replace" | "tug" | "ttr";
+  mode: "classic" | "replace" | "tug" | "ttr" | "bomb" | "ioi";
   replaceIncrement: number;
   gridSize: number;
   teams: Team[];
@@ -15,7 +15,35 @@ export interface Match {
   tugCount?: number;
   ttrState?: TTRState;
   ttrParams?: TTRParams;
+  bombState?: BombState;
+  bombParams?: BombParams;
+  minRating?: number | null;
+  maxRating?: number | null;
+  version?: number | null;
+  lastPolledAt?: string;
 }
+
+export interface BombState {
+  aliveTeams: string[];
+  holderTeam: string;
+  bombStatus: 'ticking' | 'defused_waiting_pass' | 'exploded' | 'game_over';
+  bombStartTime: string;
+  activeProblem: {
+    contestId: number;
+    index: string;
+    name: string;
+    rating: number;
+  };
+  points: Record<string, number>;
+}
+
+export interface BombParams {
+  timeLimitMinutes: number;
+  initialPoints: number;
+  minRating: number;
+  maxRating: number;
+}
+
 
 export interface Team {
   id: number;

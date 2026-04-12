@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from "@/app/lib/prisma"
 import { checkSolvesLogic, Problem, Player, Claim } from '@/lib/checkSolvesLogic'
 import { fetchAndFilterProblems } from '@/app/lib/problems';
-import { TTRParams, TTRState } from '@/app/types/match';
+import { TTRParams, TTRState, BombState, BombParams } from '@/app/types/match';
 import { buildEnrichedSolveLog } from '@/lib/enrichSolveLog';
 import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
 import { fetchReplacementProblem } from '@/lib/problemUtils';
@@ -64,6 +64,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!match) {
       return res.status(404).json({ error: 'Match not found' })
+    }
+
+    let bombStateChanged = false;
+    // Check if the bomb has exploded (only if in bomb mode)
+    if (match.mode === 'bomb' && match.bombState) {
+      const state = match.bombState as unknown as BombState;
+      const params = match.bombParams as unknown as BombParams;
+      if (state.bombStatus === 'ticking') {
+         const limitMs = (params.timeLimitMinutes || 10) * 60000;
+         const startT = new Date(state.bombStartTime).getTime();
+         const nowT = Date.now();
+         if (nowT - startT > limitMs) {
+            // Bomb exploded!
+            state.aliveTeams = state.aliveTeams.filter((t: string) => t !== state.holderTeam);
+            if (state.aliveTeams.length > 0) {
+               // Assign to random alive team
+               state.holderTeam = state.aliveTeams[Math.floor(Math.random() * state.aliveTeams.length)];
+               state.bombStartTime = new Date().toISOString();
+               // Question refreshes on explosion
+               const allHandles = match.teams.flatMap((t: any) => t.members).map((m: any) => m.handle);
+               const minRating = params.minRating || 800;
+               const maxRating = params.maxRating || 1200;
+               const usedKeys = match.problems.map(p => `${p.contestId}-${p.index}`);
+               try {
+                   const cand = await fetchReplacementProblem(usedKeys, minRating, maxRating, allHandles);
+                   if (cand) {
+                       state.activeProblem = {
+                           contestId: cand.contestId,
+                           index: cand.index,
+                           name: cand.name,
+                           rating: cand.rating || 0
+                       };
+                       // Add to DB problems
+                       await prisma.problem.updateMany({ where: { matchId: match.id, active: true }, data: { active: false } });
+                       await prisma.problem.create({
+                           data: {
+                               contestId: cand.contestId!,
+                               index: cand.index!,
+                               matchId: match.id,
+                               rating: cand.rating || 0,
+                               name: cand.name || `Problem`,
+                               position: 0,
+                               active: true
+                           }
+                       });
+                   }
+               } catch(err) {
+                   console.error("Explosion problem refresh error", err);
+               }
+            } else {
+               // Game over
+               state.bombStatus = 'game_over';
+            }
+            bombStateChanged = true;
+         }
+      }
     }
 
     const problems = match.problems
@@ -164,7 +220,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
     }
-    if (newSolves.length === 0) {
+    if (newSolves.length === 0 && !bombStateChanged) {
       const updatedMatch = await prisma.match.findUnique({
         where: { id: matchId },
         include: {
@@ -180,6 +236,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         updatedMatch.ttrState = state;
       }
       return res.status(200).json({ updated: false, match: updatedMatch });
+    } else if (newSolves.length === 0 && bombStateChanged) {
+        await prisma.match.update({
+            where: { id: matchId },
+            data: { bombState: match.bombState as any }
+        });
+        const updatedMatch = await prisma.match.findUnique({
+           where: { id: matchId },
+           include: {
+             problems: { where: { active: true }, orderBy: { position: 'asc' } },
+             teams: { include: { members: true } },
+             solveLog: { include: { problem: true }, orderBy: { timestamp: 'desc' } },
+           },
+        });
+        return res.status(200).json({ updated: true, match: updatedMatch });
     }
     for (const s of newSolves) {
       const { contestId, index, team } = s;
@@ -403,6 +473,97 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           await awardTtrCoinsAndReplenish(tx, matchId, solve, fetchReplacementProblem);
         }
       });
+    }
+
+    // BOMB MODE: Award points and refresh or defuse
+    if (match.mode === 'bomb' && newSolves.length > 0) {
+        const state = match.bombState as unknown as BombState;
+        const params = match.bombParams as unknown as BombParams;
+        const initialPoints = params.initialPoints || 100;
+        const durationMs = (match.durationMinutes || 120) * 60000;
+
+        let needsRefresh = false;
+        let pScore = 0;
+
+        for (const solve of newSolves) { // theoretically 1 if active problem
+             if (state.aliveTeams && !state.aliveTeams.includes(solve.team)) {
+                 // Dead teams can't solve
+                 continue;
+             }
+             
+             // Calculate points
+             const timeElapsed = solve.timestamp.getTime() - match.startTime.getTime();
+             const ratio = Math.max(0, Math.min(1, timeElapsed / durationMs));
+             // Decreases from initialPoints to initialPoints / 2
+             const pointsEarned = Math.floor(initialPoints - (initialPoints / 2) * ratio);
+
+             let actuallyEarned = pointsEarned;
+             let isHolder = solve.team === state.holderTeam;
+
+             if (isHolder && state.bombStatus === 'ticking') {
+                 actuallyEarned += Math.floor(initialPoints * 0.10); // 10% bonus
+                 state.points[solve.team] = (state.points[solve.team] || 0) + actuallyEarned;
+                 state.bombStatus = 'defused_waiting_pass';
+                 // We don't refresh immediately; we refresh when passed!
+             } else {
+                 state.points[solve.team] = (state.points[solve.team] || 0) + actuallyEarned;
+                 needsRefresh = true;
+             }
+             // Store points in solve.score to be saved in DB
+             solve.score = actuallyEarned;
+        }
+
+        if (needsRefresh) {
+            // Someone else solved it (or maybe holder solved it but we already handle it)
+            // Wait, if holder solved it, needsRefresh = false so it doesn't refresh yet.
+            const allHandles = match.teams.flatMap((t: any) => t.members).map((m: any) => m.handle);
+            const minRating = params.minRating || 800;
+            const maxRating = params.maxRating || 1200;
+            const usedKeys = match.problems.map(p => `${p.contestId}-${p.index}`);
+            try {
+               const cand = await fetchReplacementProblem(usedKeys, minRating, maxRating, allHandles);
+               if (cand) {
+                   state.activeProblem = {
+                       contestId: cand.contestId,
+                       index: cand.index,
+                       name: cand.name,
+                       rating: cand.rating || 0
+                   };
+                   await prisma.$transaction(async (tx: any) => {
+                       await tx.problem.updateMany({ where: { matchId: match.id, active: true }, data: { active: false } });
+                       await tx.problem.create({
+                           data: {
+                               contestId: cand.contestId!,
+                               index: cand.index!,
+                               matchId: match.id,
+                               rating: cand.rating || 0,
+                               name: cand.name || `Problem`,
+                               position: 0,
+                               active: true
+                           }
+                       });
+                   });
+               }
+            } catch(err) {
+               console.error("Bomb problem refresh err", err);
+            }
+        }
+
+        // Save state
+        await prisma.match.update({
+            where: { id: matchId },
+            data: { bombState: state as any }
+        });
+        
+        // Also update scores in solveLog properly.
+        for (const solve of newSolves) {
+            if (solve.score) {
+                await prisma.solveLog.updateMany({
+                   where: { matchId, contestId: solve.contestId, index: solve.index, handle: solve.handle },
+                   data: { score: solve.score }
+                });
+            }
+        }
     }
 
     const updatedMatch = await prisma.match.findUnique({

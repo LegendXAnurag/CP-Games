@@ -19,6 +19,7 @@ enum MatchMode {
   ioi
   tug
   ttr
+  bomb
 }
 
 model Match {
@@ -41,6 +42,9 @@ model Match {
   tugCount Int?        // Tug of War: current count (starts at 0)
   ttrState Json?       // ticket to ride state
   ttrParams Json?      // ticket to ride params
+  bombState Json?      // pass the bomb state
+  bombParams Json?     // pass the bomb params
+  version Int?
 }
 
 model Problem {

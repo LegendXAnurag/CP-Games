@@ -10,6 +10,7 @@ import { ProblemCell } from '../../types/match'
 // import MatchCreationForm from '../../MatchCreationForm';
 import TugOfWarDisplay from '../../TugOfWarDisplay';
 import TTRGameDisplay from '../../ttr-mode/TTRGameDisplay';
+import BombGameDisplay from '../../bomb-mode/BombGameDisplay';
 import { Match } from '../../types/match';
 // import TeamsForm from '@/app/TeamsForm';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -656,6 +657,18 @@ export default function Home() {
         {/* Navbar is 64px (pt-16). This div fills exactly the remaining viewport. */}
         <div style={{ paddingTop: '64px', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <TTRGameDisplay match={match} currentTeam={currentTeam} setCurrentTeam={setCurrentTeam} hasStarted={matchHasStarted} />
+        </div>
+      </main>
+    );
+  }
+
+  // ── Bomb mode: escape the padded page layout, fill all remaining viewport space
+  if (match.mode === 'bomb') {
+    return (
+      <main className="text-white" style={{ background: '#050505' }}>
+        {winner && confettiActive && <Confetti width={width} height={height} recycle={false} numberOfPieces={300} />}
+        <div style={{ paddingTop: '64px', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <BombGameDisplay match={match} currentTeam={currentTeam} setCurrentTeam={setCurrentTeam} hasStarted={matchHasStarted} />
         </div>
       </main>
     );

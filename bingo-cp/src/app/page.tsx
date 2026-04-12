@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   ArrowRight, Grid3x3, Swords, TrainFront,
-  Zap, ShieldCheck, BarChart3,
+  Zap, ShieldCheck, BarChart3, Bomb
 } from 'lucide-react';
 import GameModeCard from '@/components/GameModeCard';
 import FeatureCard from '@/components/FeatureCard';
@@ -60,6 +60,18 @@ const MODES = [
     cta: 'Start Journey',
     desc: 'Earn coins by solving problems. Spend them to claim train routes across the map.',
     bullets: ['Europe Map', 'Coin Economy', 'Route Strategy'],
+  },
+  {
+    href: '/create-bomb-match',
+    label: 'Pass the Bomb',
+    tag: 'SURVIVAL',
+    icon: Bomb,
+    accent: '#ef4444',
+    accentBg: 'rgba(239,68,68,0.06)',
+    tagBg: 'rgba(239,68,68,0.12)',
+    cta: 'Light Fuse',
+    desc: 'Solve the problem before your timer explodes. Pass the bomb. Survive.',
+    bullets: ['10 Min Timer', 'Target Refreshes', 'Multi-team'],
   },
 ];
 
