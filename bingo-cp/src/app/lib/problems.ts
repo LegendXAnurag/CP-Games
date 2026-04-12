@@ -51,9 +51,11 @@ export async function fetchAndFilterProblems(options: GetProblemsOptions): Promi
         const solvedSet = new Set<string>();
 
         // Fetch submissions in parallel using our optimized client
+        const limitStr = process.env.CF_MATCH_CREATION_FETCH_LIMIT;
+        const limit = limitStr ? Number(limitStr) : undefined;
         await Promise.all(userHandles.map(async (handle) => {
             try {
-                const submissions = await fetchUserSubmissions(handle) as Array<{
+                const submissions = await fetchUserSubmissions(handle, limit) as Array<{
                     problem: { contestId: number; index: string },
                     verdict: string
                 }>;

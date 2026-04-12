@@ -27,19 +27,22 @@ async function throttle() {
 /**
  * Fetches user submissions with caching, request coalescing, and throttling.
  * @param handle Codeforces user handle
+ * @param limit Optional fetch limit (0 or undefined means all)
  */
-export async function fetchUserSubmissions(handle: string) {
+export async function fetchUserSubmissions(handle: string, limit?: number) {
   const now = Date.now();
 
+  const cacheKey = limit && limit > 0 ? `${handle}-${limit}` : handle;
+
   // 1. Check Cache
-  const cached = submissionCache.get(handle);
+  const cached = submissionCache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_DURATION_MS) {
     return cached.data;
   }
 
   // 2. Check Pending Requests (Request Coalescing)
-  if (pendingRequests.has(handle)) {
-    return pendingRequests.get(handle);
+  if (pendingRequests.has(cacheKey)) {
+    return pendingRequests.get(cacheKey);
   }
 
   // 3. Create New Request
@@ -47,7 +50,10 @@ export async function fetchUserSubmissions(handle: string) {
     try {
       await throttle(); // Ensure we don't spam the API
       console.log(`[Codeforces] Fetching submissions for ${handle}...`);
-      const res = await fetch(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=50`);
+      const url = limit && limit > 0 
+        ? `https://codeforces.com/api/user.status?handle=${handle}&from=1&count=${limit}` 
+        : `https://codeforces.com/api/user.status?handle=${handle}`;
+      const res = await fetch(url);
 
       if (!res.ok) {
         const text = await res.text();
@@ -68,22 +74,22 @@ export async function fetchUserSubmissions(handle: string) {
       console.log(`[Codeforces] Fetched ${result.length} submissions for ${handle}`);
 
       // Update Cache
-      submissionCache.set(handle, { timestamp: Date.now(), data: result });
+      submissionCache.set(cacheKey, { timestamp: Date.now(), data: result });
       return result;
     } catch (error) {
       console.error(`[Codeforces] Error fetching ${handle}:`, error);
       return []; // Return empty on error to prevent crashing consumers
     } finally {
-      pendingRequests.delete(handle);
+      pendingRequests.delete(cacheKey);
     }
   })();
 
-  pendingRequests.set(handle, promise);
+  pendingRequests.set(cacheKey, promise);
   return promise;
 }
 
 // Keep the original function signature for backward compatibility, but use the new logic
-export async function fetchRecentSubmissions(handles: string[]) {
-  const results = await Promise.all(handles.map(fetchUserSubmissions));
+export async function fetchRecentSubmissions(handles: string[], limit?: number) {
+  const results = await Promise.all(handles.map(h => fetchUserSubmissions(h, limit)));
   return results.flat();
 }

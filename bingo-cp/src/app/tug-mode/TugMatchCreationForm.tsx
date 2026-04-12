@@ -181,8 +181,19 @@ const TugMatchCreationForm: React.FC<TugMatchCreationFormProps> = ({ }) => {
 
             if (!res.ok) {
                 const errorText = await res.text();
-                console.error("Failed to create match:", errorText);
-                alert("Failed to create match: " + errorText);
+                let errorMessage = "Failed to create match";
+                try {
+                    const errJson = JSON.parse(errorText);
+                    if (errJson.error || errJson.message) {
+                        errorMessage = errJson.error || errJson.message;
+                    } else {
+                        errorMessage = errorText || errorMessage;
+                    }
+                } catch {
+                    errorMessage = errorText || errorMessage;
+                }
+                console.error("Failed to create match:", errorMessage);
+                alert("Failed to create match: " + errorMessage);
                 setIsSubmitting(false);
                 return;
             }

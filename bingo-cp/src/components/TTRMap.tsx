@@ -7,17 +7,24 @@ import { canBuildTrack, canBuildStation, getTrackCost, getCompletedRoute } from 
 import { X, TrainFront, MapPin, GripHorizontal } from "lucide-react";
 import { motion } from "framer-motion";
 
+const COLOR_HEX: Record<string, string> = {
+    red: '#ef4444', blue: '#3b82f6', green: '#22c55e',
+    purple: '#a855f7', orange: '#f97316', pink: '#db2777',
+    yellow: '#eab308', teal: '#14b8a6', brown: '#8B4513',
+};
+
 interface TTRMapProps {
     matchId: string;
     state: TTRState;
     currentTeam: string;
+    token?: string;
     onUpdate?: (newState: TTRState) => void;
     readOnly?: boolean;
     focusedTicket?: Ticket | null;
     setFocusedTicket?: (t: Ticket | null) => void;
 }
 
-export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly, focusedTicket, setFocusedTicket }: TTRMapProps) {
+export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, readOnly, focusedTicket, setFocusedTicket }: TTRMapProps) {
     const [scale, setScale] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
     const [confirmTrack, setConfirmTrack] = useState<Track | null>(null);
@@ -55,7 +62,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
             const res = await fetch('/api/ttr/buildTrack', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ matchId, team: currentTeam, trackId: originalTrack.id })
+                body: JSON.stringify({ matchId, team: currentTeam, trackId: originalTrack.id, token })
             });
             if (!res.ok) {
                 const text = await res.text();
@@ -88,7 +95,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
             const res = await fetch('/api/ttr/buildStation', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ matchId, team: currentTeam, trackId })
+                body: JSON.stringify({ matchId, team: currentTeam, trackId, token })
             });
 
             if (!res.ok) {
@@ -190,7 +197,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                     {track.units.map((unit: any, idx: number) => {
                                         const w = unit.width || 20;
                                         const h = unit.height || 8;
-                                        const fillColors = isClaimed ? [ownerColor, ...((trackState as any)?.stationedBy || [])] : [track.color || 'gray'];
+                                        const fillColors = (isClaimed ? [ownerColor, ...((trackState as any)?.stationedBy || [])] : [track.color || 'gray']).map(c => COLOR_HEX[c?.toLowerCase()] || c);
                                         const colorCount = fillColors.length;
                                         const stripeWidth = w / colorCount;
 
@@ -270,7 +277,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                     y1={y1 + offsetY}
                                     x2={x2 + offsetX}
                                     y2={y2 + offsetY}
-                                    stroke={completedTrackIds.has(track.id) ? "white" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "yellow" : isClaimed ? ownerColor : 'rgba(0,0,0,0.5)'}
+                                    stroke={completedTrackIds.has(track.id) ? "white" : confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "yellow" : isClaimed ? (COLOR_HEX[ownerColor?.toLowerCase()] || ownerColor) : 'rgba(0,0,0,0.5)'}
                                     strokeWidth={completedTrackIds.has(track.id) ? "12" : "8"}
                                     strokeDasharray={isClaimed ? "none" : "12, 4"}
                                     className={`transition-all group-hover:stroke-[10px] ${!isClaimed ? 'group-hover:stroke-white group-hover:opacity-80' : ''} ${completedTrackIds.has(track.id) || confirmTrack?.id === track.id || confirmStationTrack?.id === track.id ? "animate-pulse stroke-[10px]" : ""}`}
@@ -291,7 +298,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
                                                 y={midY - 12}
                                                 width={8}
                                                 height={24}
-                                                fill={stationTeam}
+                                                fill={COLOR_HEX[stationTeam?.toLowerCase()] || stationTeam}
                                                 stroke="white"
                                                 strokeWidth="1"
                                                 transform={`rotate(${angle + 90}, ${midX}, ${midY})`}

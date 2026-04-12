@@ -70,6 +70,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const Cmode = mode;
 
   const allHandles = teams.flatMap((team) => team.members);
+  
+  if (allHandles.length > 0) {
+    try {
+      const infoRes = await fetch(`https://codeforces.com/api/user.info?handles=${allHandles.join(';')}`);
+      const data = await infoRes.json();
+      if (data.status === 'FAILED') {
+        return res.status(400).json({ error: data.comment || 'One or more Codeforces handles are invalid or not found' });
+      }
+    } catch (e) {
+      console.error("Error validating handles:", e);
+      return res.status(500).json({ error: 'Failed to validate Codeforces handles' });
+    }
+  }
+
   try {
     // For tug single mode, fetch only 1 problem; otherwise fetch grid
     const problemCount = (mode === 'tug' && tugType === 'single') ? 1 : gridSize * gridSize;
