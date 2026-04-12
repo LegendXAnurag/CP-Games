@@ -80,8 +80,8 @@ export default function JoinScreen({ matchId, teams: initialTeams }: JoinScreenP
             case 'blue': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
             case 'green': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100';
             case 'yellow': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100';
-            case 'pink': return 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-100';
-            case 'black': return 'bg-gray-200 text-black dark:bg-zinc-800 dark:text-black dark:[text-shadow:-1px_-1px_0_#FFF,1px_-1px_0_#FFF,-1px_1px_0_#FFF,1px_1px_0_#FFF]';
+            case 'pink': return 'bg-pink-100 text-pink-800 dark:bg-pink-800 dark:text-pink-100';
+            case 'brown': return 'bg-orange-200 text-orange-900 dark:bg-[#8B4513] dark:text-orange-100';
             default: return 'bg-gray-100 text-gray-800';
         }
     };

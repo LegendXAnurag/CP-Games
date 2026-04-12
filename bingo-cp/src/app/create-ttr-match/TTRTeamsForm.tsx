@@ -17,15 +17,15 @@ interface TTRTeamsFormProps {
 }
 
 export default function TTRTeamsForm({ teams, onTeamsChange }: TTRTeamsFormProps) {
-    type ColorOption = "red" | "black" | "blue" | "yellow" | "green" | "pink";
+    type ColorOption = "red" | "brown" | "blue" | "yellow" | "green" | "pink";
 
     const COLOR_OPTIONS: ColorOption[] = [
-        "red", "black", "blue", "yellow", "green", "pink"
+        "red", "brown", "blue", "yellow", "green", "pink"
     ];
 
     const COLOR_CLASSES: Record<ColorOption, { bg: string; text: string; border: string }> = {
         red: { bg: "bg-red-600", text: "text-white", border: "border-red-800" },
-        black: { bg: "bg-black", text: "text-white", border: "border-gray-800" },
+        brown: { bg: "bg-[#8B4513]", text: "text-white", border: "border-[#5C2E0C]" },
         blue: { bg: "bg-blue-600", text: "text-white", border: "border-blue-800" },
         yellow: { bg: "bg-yellow-500", text: "text-black", border: "border-yellow-700" },
         green: { bg: "bg-green-600", text: "text-white", border: "border-green-800" },

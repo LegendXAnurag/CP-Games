@@ -21,8 +21,8 @@ interface TTRGameDisplayProps {
 
 const COLOR_HEX: Record<string, string> = {
     red: '#ef4444', blue: '#3b82f6', green: '#22c55e',
-    purple: '#a855f7', orange: '#f97316', pink: '#ec4899',
-    yellow: '#eab308', teal: '#14b8a6',
+    purple: '#a855f7', orange: '#f97316', pink: '#db2777',
+    yellow: '#eab308', teal: '#14b8a6', brown: '#8B4513',
 };
 
 function formatTime(ms: number): string {
@@ -424,22 +424,22 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 <div className="flex items-center gap-3 shrink-0">
                     {user && (
                         <div
-                            className="flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold font-heading"
+                            className="flex items-center gap-2.5 px-4 py-1.5 rounded-full text-sm font-bold font-heading shadow-sm"
                             style={{
                                 background: `${COLOR_HEX[user.teamColor] ?? user.teamColor}18`,
                                 border: `1px solid ${COLOR_HEX[user.teamColor] ?? user.teamColor}40`,
                                 color: COLOR_HEX[user.teamColor] ?? user.teamColor,
                             }}
                         >
-                            <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: COLOR_HEX[user.teamColor] ?? user.teamColor }} />
-                            {user.handle}
-                            <span className="text-white/40">·</span>
+                            <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: COLOR_HEX[user.teamColor] ?? user.teamColor }} />
+                            <span className="truncate max-w-[150px]">{user.handle}</span>
+                            <span className="text-white/40 font-black">·</span>
                             <span className="capitalize">{user.teamColor}</span>
                         </div>
                     )}
                     {isSpectator && (
                         <div
-                            className="px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-widest font-heading"
+                            className="px-3 py-1.5 rounded-full text-sm font-bold uppercase tracking-widest font-heading shadow-sm"
                             style={{ background: 'rgba(112,0,255,0.15)', border: '1px solid rgba(112,0,255,0.35)', color: '#a87fff' }}
                         >
                             Spectator
@@ -449,7 +449,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                         <select
                             value={currentTeam}
                             onChange={(e) => setCurrentTeam(e.target.value)}
-                            className="text-xs rounded-lg px-2 py-1 cursor-pointer font-heading"
+                            className="text-sm rounded-lg px-3 py-1.5 cursor-pointer font-bold font-heading shadow-sm"
                             style={{ background: 'rgba(10,10,10,0.9)', border: '1px solid rgba(0,240,255,0.2)', color: '#00f0ff' }}
                         >
                             {match.teams.map((t: any) => (
