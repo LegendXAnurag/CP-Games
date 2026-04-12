@@ -112,13 +112,16 @@ export default function CreateTTRMatch() {
 
             if (!res.ok) {
                 const text = await res.text();
+                let errorMessage = `Server error (${res.status}): ${res.statusText}`;
                 try {
                     const data = JSON.parse(text);
-                    throw new Error(data.message || 'Failed to create match');
+                    if (data.message || data.error) {
+                        errorMessage = data.message || data.error;
+                    }
                 } catch (e) {
                     console.error("Create match error response:", text.substring(0, 100));
-                    throw new Error(`Server error (${res.status}): ${res.statusText}`);
                 }
+                throw new Error(errorMessage);
             }
 
             const data = await res.json();

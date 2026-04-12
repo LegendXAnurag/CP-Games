@@ -118,7 +118,18 @@ const MatchCreationForm: React.FC<MatchCreationFormProps> = ({ }) => {
 
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(errorText || "Failed to create match");
+        let errorMessage = "Failed to create match";
+        try {
+            const errJson = JSON.parse(errorText);
+            if (errJson.error || errJson.message) {
+                errorMessage = errJson.error || errJson.message;
+            } else {
+                errorMessage = errorText || errorMessage;
+            }
+        } catch {
+            errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();

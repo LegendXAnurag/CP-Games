@@ -61,9 +61,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             allHandles.push(...teamHandles);
         });
 
+        const limitStr = process.env.CF_MATCH_CREATION_FETCH_LIMIT;
+        const limit = limitStr ? Number(limitStr) : undefined;
+
+        if (allHandles.length > 0) {
+            try {
+                const infoRes = await fetch(`https://codeforces.com/api/user.info?handles=${allHandles.join(';')}`);
+                const data = await infoRes.json();
+                if (data.status === 'FAILED') {
+                    return res.status(400).json({ message: data.comment || 'One or more Codeforces handles are invalid or not found' });
+                }
+            } catch (e) {
+                console.error("Error validating handles:", e);
+                return res.status(500).json({ message: 'Failed to validate Codeforces handles' });
+            }
+        }
+
         await Promise.all(allHandles.map(async (handle) => {
             try {
-                const submissions = await fetchUserSubmissions(handle);
+                const submissions = await fetchUserSubmissions(handle, limit);
                 if (Array.isArray(submissions)) {
                     for (const sub of submissions as Array<any>) {
                         if (sub.verdict === 'OK' && sub.problem) {

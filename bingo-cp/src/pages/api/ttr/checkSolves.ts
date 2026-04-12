@@ -76,7 +76,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 // ---------------------------------------------------------------------------
 async function runChecks(matchId: string, member: any) {
     // Fetch submissions from Codeforces (the slow part — 2-15s)
-    const submissions = await fetchUserSubmissions(member.handle);
+    const limitStr = process.env.CF_LIVE_POLLING_FETCH_LIMIT;
+    const limit = limitStr ? Number(limitStr) : undefined;
+    const submissions = await fetchUserSubmissions(member.handle, limit);
 
     if (!submissions || !Array.isArray(submissions) || submissions.length === 0) {
         return;

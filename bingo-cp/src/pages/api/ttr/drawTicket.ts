@@ -7,14 +7,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(405).json({ message: 'Method not allowed' });
     }
 
-    const { matchId, team } = req.body;
+    const { matchId, team, token } = req.body;
 
-    if (!matchId || !team) {
+    if (!matchId || !team || !token) {
         return res.status(400).json({ message: 'Missing parameters' });
     }
 
     try {
         const updatedState = await prisma.$transaction(async (tx) => {
+            const member = await tx.member.findFirst({
+                where: {
+                    secret: token,
+                    team: { matchId },
+                    claimed: true,
+                },
+                include: { team: true },
+            });
+
+            if (!member || member.team.color !== team) {
+                throw new Error('Unauthorized or team mismatch');
+            }
+
             const match = await tx.match.findUnique({
                 where: { id: matchId },
                 select: { ttrState: true, mode: true }

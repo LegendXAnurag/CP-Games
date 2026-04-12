@@ -11,13 +11,14 @@ interface TTRMapProps {
     matchId: string;
     state: TTRState;
     currentTeam: string;
+    token?: string;
     onUpdate?: (newState: TTRState) => void;
     readOnly?: boolean;
     focusedTicket?: Ticket | null;
     setFocusedTicket?: (t: Ticket | null) => void;
 }
 
-export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly, focusedTicket, setFocusedTicket }: TTRMapProps) {
+export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, readOnly, focusedTicket, setFocusedTicket }: TTRMapProps) {
     const [scale, setScale] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
     const [confirmTrack, setConfirmTrack] = useState<Track | null>(null);
@@ -55,7 +56,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
             const res = await fetch('/api/ttr/buildTrack', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ matchId, team: currentTeam, trackId: originalTrack.id })
+                body: JSON.stringify({ matchId, team: currentTeam, trackId: originalTrack.id, token })
             });
             if (!res.ok) {
                 const text = await res.text();
@@ -88,7 +89,7 @@ export default function TTRMap({ matchId, state, currentTeam, onUpdate, readOnly
             const res = await fetch('/api/ttr/buildStation', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ matchId, team: currentTeam, trackId })
+                body: JSON.stringify({ matchId, team: currentTeam, trackId, token })
             });
 
             if (!res.ok) {

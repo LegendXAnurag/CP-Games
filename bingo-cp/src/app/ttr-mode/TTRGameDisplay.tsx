@@ -632,6 +632,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     matchId={match.id}
                     state={ttrState}
                     currentTeam={currentTeam}
+                    token={user?.token}
                     onUpdate={handleStateUpdate}
                     readOnly={isSpectator || isMatchEnded}
                     focusedTicket={focusedTicket}

@@ -27,9 +27,11 @@ export async function checkSolvesLogic(problems: Problem[], players: Player[]) {
     const claims: Record<string, { team: string; handle: string; time: number; id: number }> = {}
 
     // Process players in parallel to take advantage of our new coalescing/throttling
+    const limitStr = process.env.CF_LIVE_POLLING_FETCH_LIMIT;
+    const limit = limitStr ? Number(limitStr) : undefined;
     await Promise.all(players.map(async (player) => {
         try {
-            const submissions = await fetchUserSubmissions(player.handle) as Array<{
+            const submissions = await fetchUserSubmissions(player.handle, limit) as Array<{
                 id: number,
                 creationTimeSeconds: number,
                 problem: { contestId: number; index: string },
