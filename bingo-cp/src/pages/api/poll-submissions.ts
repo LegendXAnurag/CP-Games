@@ -3,22 +3,10 @@ import { prisma } from "@/app/lib/prisma"
 import { checkSolvesLogic, Problem, Player, Claim } from '@/lib/checkSolvesLogic'
 import { fetchAndFilterProblems } from '@/app/lib/problems';
 import { TTRParams, TTRState } from '@/app/types/match';
+import { buildEnrichedSolveLog } from '@/lib/enrichSolveLog';
+import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
+import { fetchReplacementProblem } from '@/lib/problemUtils';
 
-async function fetchReplacementProblem(exclude: string[], minRating?: number, maxRating?: number, handles?: string[]) {
-  try {
-    const problems = await fetchAndFilterProblems({
-      minRating: minRating ?? 800,
-      maxRating: maxRating ?? 3500,
-      userHandles: handles,
-      count: 1,
-      exclude: exclude
-    });
-    return problems[0] ?? null;
-  } catch (err) {
-    console.error('fetchReplacementProblem error', err);
-    return null;
-  }
-}
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' })
@@ -57,20 +45,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (cachedMatch?.mode === 'ttr' && cachedMatch?.ttrState) {
         const state = cachedMatch.ttrState as any;
-        const enrichedSolveLog = [];
-        for (const log of cachedMatch.solveLog) {
-          const tsStr = new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const pName = log.problem?.name || `Problem ${log.index}`;
-          const coins = log.problem?.rating ? Math.round(log.problem.rating / 500) + 1 : 0;
-          enrichedSolveLog.push({
-            team: log.team,
-            handle: log.handle || 'Unknown Solver',
-            problemName: pName,
-            coinsAwarded: coins,
-            timestamp: tsStr
-          });
-        }
-        state.solveLog = enrichedSolveLog;
+        state.solveLog = buildEnrichedSolveLog(cachedMatch.solveLog, state, cachedMatch.ttrParams);
         cachedMatch.ttrState = state;
       }
       return res.json({ message: "Using cached state", match: cachedMatch });
@@ -201,20 +176,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (updatedMatch?.mode === 'ttr' && updatedMatch?.ttrState) {
         const state = updatedMatch.ttrState as any;
-        const enrichedSolveLog = [];
-        for (const log of updatedMatch.solveLog) {
-          const tsStr = new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const pName = log.problem?.name || `Problem ${log.index}`;
-          const coins = log.problem?.rating ? Math.round(log.problem.rating / 500) + 1 : 0;
-          enrichedSolveLog.push({
-            team: log.team,
-            handle: log.handle || 'Unknown Solver',
-            problemName: pName,
-            coinsAwarded: coins,
-            timestamp: tsStr
-          });
-        }
-        state.solveLog = enrichedSolveLog;
+        state.solveLog = buildEnrichedSolveLog(updatedMatch.solveLog, state, updatedMatch.ttrParams);
         updatedMatch.ttrState = state;
       }
       return res.status(200).json({ updated: false, match: updatedMatch });
@@ -245,7 +207,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
       }
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         const existing = await tx.solveLog.findFirst({
           where: { matchId, contestId, index },
         });
@@ -350,36 +312,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // TUG MODE: Update tugCount based on solves
+    // TUG MODE: Update tugCount based on solves (wrapped in transaction for concurrency safety)
     if (match.mode === 'tug' && newSolves.length > 0) {
       const teamA = match.teams[0]?.color; // First team
       const teamB = match.teams[1]?.color; // Second team
 
+      await prisma.$transaction(async (tx: any) => {
+        // Re-read current tugCount inside the transaction to avoid stale reads
+        const freshMatch = await tx.match.findUnique({
+          where: { id: matchId },
+          select: { tugCount: true },
+        });
+        let runningCount = freshMatch?.tugCount ?? 0;
+
+        for (const solve of newSolves) {
+          const problem = match.problems.find(
+            p => p.contestId === solve.contestId && p.index === solve.index
+          );
+          const rating = problem?.rating ?? 0;
+
+          if (solve.team.toLowerCase() === teamA?.toLowerCase()) {
+            runningCount += rating; // Team A increases count
+          } else if (solve.team.toLowerCase() === teamB?.toLowerCase()) {
+            runningCount -= rating; // Team B decreases count
+          }
+        }
+
+        await tx.match.update({
+          where: { id: matchId },
+          data: { tugCount: runningCount },
+        });
+
+        match.tugCount = runningCount;
+      });
+
+      // For Type B (single), replace the problem outside the transaction
+      // (fetchReplacementProblem does external API calls)
       for (const solve of newSolves) {
         const problem = match.problems.find(
           p => p.contestId === solve.contestId && p.index === solve.index
         );
-        const rating = problem?.rating ?? 0;
-
-        // Update tugCount based on which team solved
-        const currentCount = match.tugCount ?? 0;
-        let newCount = currentCount;
-
-        if (solve.team.toLowerCase() === teamA?.toLowerCase()) {
-          newCount = currentCount + rating; // Team A increases count
-        } else if (solve.team.toLowerCase() === teamB?.toLowerCase()) {
-          newCount = currentCount - rating; // Team B decreases count
-        }
-
-        await prisma.match.update({
-          where: { id: matchId },
-          data: { tugCount: newCount },
-        });
-
-        // Update local match object for subsequent iterations
-        match.tugCount = newCount;
-
-        // For Type B (single), replace the problem
         if (match.tugType === 'single' && problem) {
           const allHandles = match.teams.flatMap(t => t.members).map(m => m.handle);
           const problemKeys = match.problems.filter(p => p.active).map(p => `${p.contestId}-${p.index}`);
@@ -392,14 +364,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               allHandles
             );
 
-            await prisma.$transaction(async (tx) => {
-              // Deactivate old problem
+            await prisma.$transaction(async (tx: any) => {
               await tx.problem.update({
                 where: { contestId_index_matchId: { contestId: problem.contestId, index: problem.index, matchId } },
                 data: { active: false },
               });
 
-              // Create new problem
               if (replacementCandidate) {
                 const dup = await tx.problem.findFirst({
                   where: { contestId: replacementCandidate.contestId ?? 0, index: replacementCandidate.index ?? '', matchId }
@@ -424,94 +394,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         }
       }
-
-      // TUG MODE: Check additional win conditions
-      const threshold = match.tugThreshold ?? 2000;
-      const currentCount = match.tugCount ?? 0;
-      const matchStart = new Date(match.startTime);
-      const matchEnd = new Date(matchStart.getTime() + match.durationMinutes * 60 * 1000);
-      const now = new Date();
-      const matchHasEnded = now >= matchEnd;
-
-      // Check if all grid problems are solved (for grid mode)
-      const allGridProblemsSolved = match.tugType === 'grid' &&
-        match.problems.every(p => {
-          return match.solveLog.some(s => s.contestId === p.contestId && s.index === p.index);
-        });
-
-      // Win condition: time ends OR all grid problems solved
-      // Team with positive count wins, or Team A if count is exactly 0
-      // The TugOfWarDisplay will show this state
     }
 
     // TTR MODE: Award coins and replenish market
     if (match.mode === 'ttr' && newSolves.length > 0) {
-      await prisma.$transaction(async (tx) => {
-        const currentMatch = await tx.match.findUnique({
-          where: { id: matchId },
-          select: { ttrState: true, ttrParams: true }
-        });
-
-        if (!currentMatch?.ttrState) return;
-
-        const state = currentMatch.ttrState as unknown as TTRState;
-        const params = currentMatch.ttrParams as unknown as TTRParams;
-        let stateChanged = false;
-
+      await prisma.$transaction(async (tx: any) => {
         for (const solve of newSolves) {
-          // Find which problem was solved in the market
-          const marketIdx = state.market.findIndex(p => p.contestId === solve.contestId && p.index === solve.index);
-
-          if (marketIdx !== -1) {
-            const problem = state.market[marketIdx];
-            const playerTeam = solve.team;
-
-            // Award coins
-            const row = problem.row; // 0, 1, 2, 3
-            const coins = row === 0 ? 2 : row === 1 ? 3 : row === 2 ? 4 : 5;
-
-            if (state.players[playerTeam]) {
-              state.players[playerTeam].coins += coins;
-            }
-
-            // Remove from market
-            state.market.splice(marketIdx, 1);
-
-            // Replenish
-            const levelMin = row === 0 ? params.level1.min : row === 1 ? params.level2.min : row === 2 ? params.level3.min : params.level4?.min ?? 1500;
-            const levelMax = row === 0 ? params.level1.max : row === 1 ? params.level2.max : row === 2 ? params.level3.max : params.level4?.max ?? 3500;
-
-            const allHandles = match.teams.flatMap(t => t.members).map(m => m.handle);
-            try {
-              const replacement = await fetchReplacementProblem(
-                state.market.map(p => `${p.contestId}-${p.index}`),
-                levelMin,
-                levelMax,
-                allHandles
-              );
-
-              if (replacement) {
-                state.market.push({
-                  ...replacement,
-                  rating: replacement.rating ?? 0,
-                  row: row,
-                  col: 0,
-                  points: 0,
-                });
-              }
-            } catch (e) {
-              console.error("Failed to replenish TTR market", e);
-            }
-
-            stateChanged = true;
-          }
-        }
-
-        if (stateChanged) {
-          await tx.match.update({
-            where: { id: matchId },
-            data: { ttrState: state as any }
-          });
+          await awardTtrCoinsAndReplenish(tx, matchId, solve, fetchReplacementProblem);
         }
       });
     }
@@ -527,20 +416,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (updatedMatch?.mode === 'ttr' && updatedMatch?.ttrState) {
       const state = updatedMatch.ttrState as any;
-      const enrichedSolveLog = [];
-      for (const log of updatedMatch.solveLog) {
-        const tsStr = new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const pName = log.problem?.name || `Problem ${log.index}`;
-        const coins = log.problem?.rating ? Math.round(log.problem.rating / 500) + 1 : 0;
-        enrichedSolveLog.push({
-          team: log.team,
-          handle: log.handle || 'Unknown Solver',
-          problemName: pName,
-          coinsAwarded: coins,
-          timestamp: tsStr
-        });
-      }
-      state.solveLog = enrichedSolveLog;
+      state.solveLog = buildEnrichedSolveLog(updatedMatch.solveLog, state, updatedMatch.ttrParams);
       updatedMatch.ttrState = state;
     }
     return res.status(200).json({ updated: true, match: updatedMatch });

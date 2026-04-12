@@ -1,31 +1,34 @@
 "use client";
 
-import { TTRState } from "../app/types/match";
+import { TTRState, TTRParams } from "../app/types/match";
 import { ExternalLink } from "lucide-react";
+import { getCoinsForRow } from "@/lib/ttrCoins";
 
 interface CoinMarketplaceProps {
     state: TTRState;
+    params?: TTRParams;
 }
 
 const LEVEL_CONFIG = [
-    { label: "Easy", coins: 2, color: "#22c55e", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", hover: "rgba(34,197,94,0.12)" },
-    { label: "Medium", coins: 3, color: "#eab308", bg: "rgba(234,179,8,0.08)", border: "rgba(234,179,8,0.2)", hover: "rgba(234,179,8,0.12)" },
-    { label: "Hard", coins: 4, color: "#f97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", hover: "rgba(249,115,22,0.12)" },
-    { label: "Expert", coins: 5, color: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)", hover: "rgba(239,68,68,0.12)" },
+    { label: "Easy", color: "#22c55e", bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.2)", hover: "rgba(34,197,94,0.12)" },
+    { label: "Medium", color: "#eab308", bg: "rgba(234,179,8,0.08)", border: "rgba(234,179,8,0.2)", hover: "rgba(234,179,8,0.12)" },
+    { label: "Hard", color: "#f97316", bg: "rgba(249,115,22,0.08)", border: "rgba(249,115,22,0.2)", hover: "rgba(249,115,22,0.12)" },
+    { label: "Expert", color: "#ef4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)", hover: "rgba(239,68,68,0.12)" },
 ];
 
-export default function CoinMarketplace({ state }: CoinMarketplaceProps) {
+export default function CoinMarketplace({ state, params }: CoinMarketplaceProps) {
     const { market } = state;
 
     const byLevel = [0, 1, 2, 3].map(level => ({
         level,
         config: LEVEL_CONFIG[level],
+        coins: getCoinsForRow(level, params),
         problems: market.filter(p => p.row === level),
     }));
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-0 divide-x divide-white/5">
-            {byLevel.map(({ level, config, problems }) => (
+            {byLevel.map(({ level, config, problems, coins }) => (
                 <div key={level} className="p-4 flex flex-col gap-2">
                     {/* Level header */}
                     <div className="flex items-center justify-between mb-2">
@@ -39,7 +42,7 @@ export default function CoinMarketplace({ state }: CoinMarketplaceProps) {
                             className="text-[10px] font-bold font-mono tabular-nums font-mono"
                             style={{ color: config.color }}
                         >
-                            +{config.coins} coins
+                            +{coins} coins
                         </span>
                     </div>
 

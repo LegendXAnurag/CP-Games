@@ -286,7 +286,7 @@ export default function Home() {
         const matchObj = data.match ?? data;
         setMatch(matchObj);
         try {
-          const solvedMap: Record<number, SolvedInfo> = {};
+          const solvedMap: Record<string, SolvedInfo> = {};
           const newLogEntries: LogEntry[] = [];
           const posOwners: Record<number, string> = {};
 
@@ -295,24 +295,24 @@ export default function Home() {
           (matchObj.solveLog ?? []).forEach((entry: SolveLog) => {
             const key = `${entry.contestId}-${entry.index}`;
             const { displayName, teamKey } = resolveTeamDisplayAndKey(entry.team, teamsFromServer);
-            if (entry.problem && typeof entry.problem.position === 'number') {
-              solvedMap[entry.problem.position] = {
-                team: teamKey,
-              };
-            }
+            solvedMap[key] = {
+              team: teamKey,
+            };
             if (entry.problem && typeof entry.problem.position === 'number') {
               posOwners[entry.problem.position] = teamKey;
             }
 
             const problemName = entry.problem?.name ?? `Problem ${entry.index}`;
+            const ratingStr = entry.problem?.rating ? ` (★${entry.problem.rating})` : '';
             const contestAndIndex = `${entry.contestId}${entry.index}`;
             const solveTime = entry.timestamp;
             newLogEntries.push({
               key,
-              message: `${displayName} solved ${problemName} (${contestAndIndex}) at ${formatTime(solveTime)}`,
+              message: `${displayName} solved ${problemName}${ratingStr} at ${formatTime(solveTime)}`,
               team: teamKey,
             });
           });
+          setSolved(solvedMap);
           setPositionOwners(posOwners);  // <-- set state
 
           setLog(prev => {
@@ -434,11 +434,11 @@ export default function Home() {
 
 
             const problemName = entry.problem?.name ?? `Problem ${entry.index}`;
-            const contestAndIndex = `${entry.contestId}${entry.index}`;
+            const ratingStr = entry.problem?.rating ? ` (★${entry.problem.rating})` : '';
             const solveTime = entry.timestamp;
             newLogEntries.push({
               key,
-              message: `${displayName} solved ${problemName} (${contestAndIndex}) at ${formatTime(solveTime)}`,
+              message: `${displayName} solved ${problemName}${ratingStr} at ${formatTime(solveTime)}`,
               team: teamKey,
             });
           });
@@ -466,8 +466,7 @@ export default function Home() {
             );
           }
 
-          setSolved(solvedMap);
-          setPositionOwners(posOwners);
+
 
           setLog(prevLog => {
             const combined = [...newLogEntries, ...prevLog];
@@ -606,7 +605,10 @@ export default function Home() {
           const resp = await fetch('/api/match/setDuration', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matchId: match.id, durationMinutes: 1 }),
+            body: JSON.stringify({
+              matchId: match.id,
+              durationMinutes: Math.ceil((Date.now() - new Date(match.startTime).getTime()) / 60000)
+            }),
           });
 
           if (!resp.ok) {

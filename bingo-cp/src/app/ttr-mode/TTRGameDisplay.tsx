@@ -52,7 +52,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     // Tracks whether the user has manually overridden the focus (so auto-focus doesn't fight them)
     const userClearedFocusRef = useRef<boolean>(false);
     const [showPenalties, setShowPenalties] = useState(false);
-    
+
     const [showFinalLapPopup, setShowFinalLapPopup] = useState(false);
     const prevFinalLapRef = useRef(ttrState?.finalLapEndTime);
 
@@ -100,7 +100,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         // Auto-focus the first completed ticket only (don't clear if none)
         if (completedTickets.length > 0) {
             setFocusedTicketRaw(completedTickets[0]);
-            
+
             const timer = setTimeout(() => {
                 if (!userClearedFocusRef.current) {
                     setFocusedTicketRaw(null);
@@ -148,7 +148,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     // ─── Compute timer ─────────────────────────────────────────────────────
     const matchStart = new Date(match.startTime);
     let matchEnd = new Date(matchStart.getTime() + match.durationMinutes * 60 * 1000);
-    
+
     if (ttrState?.finalLapEndTime) {
         const finalLapEnd = new Date(ttrState.finalLapEndTime);
         if (finalLapEnd < matchEnd) {
@@ -354,7 +354,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const players = Object.values(ttrState.players).map(p => {
         const baseScore = calculateTotalScore(ttrState, p.team);
         let penalty = 0;
-        
+
         for (const ticketId of p.destinations) {
             if (ticketId === 'optimistic_draw') continue;
             const ticket = allTickets.find(t => t.id === ticketId);
@@ -365,7 +365,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 }
             }
         }
-        
+
         const finalScore = baseScore - penalty;
         const displayScore = showPenalties ? finalScore : baseScore;
 
@@ -509,15 +509,15 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             <span className="text-[10px] font-mono shrink-0" style={{ color: '#eab308' }}>🪙{player.coins}</span>
                             <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#60a5fa' }}>🚂{player.trainsLeft}</span>
                             <span className="text-[10px] font-mono shrink-0 ml-1" style={{ color: '#f87171' }}>🏠{player.stationsLeft}</span>
-                            
+
                             {/* Tickets */}
                             <div className="flex gap-1.5 ml-auto shrink-0 flex-wrap justify-end pl-4">
                                 {playerTickets.map(ticket => {
                                     const isCompleted = getCompletedRoute(ttrState, player.team, ticket.city1, ticket.city2) !== null;
                                     const lengthType = ticket.points >= 20 ? 'LONG' : 'SHORT';
                                     return (
-                                        <div 
-                                            key={ticket.id} 
+                                        <div
+                                            key={ticket.id}
                                             className={`flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-heading uppercase tracking-widest transition-colors ${isCompleted ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/10 text-red-400 border border-red-500/30'}`}
                                             title={isCompleted ? `Completed (+${ticket.points} pts)` : `Pending (-${ticket.points} pts penalty)`}
                                         >
@@ -655,8 +655,8 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                     const color = COLOR_HEX[player.team?.toLowerCase()] || '#6b7280';
                                     const isWinner = idx === 0 && players.length > 1; // Highlight lead/winner
                                     return (
-                                        <div 
-                                            key={player.team} 
+                                        <div
+                                            key={player.team}
                                             className={`flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${isWinner ? 'border-2 scale-[1.02]' : 'border hover:scale-[1.01]'}`}
                                             style={{
                                                 backgroundColor: isWinner ? `${color}15` : 'rgba(255,255,255,0.02)',
@@ -718,7 +718,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                                 FINAL LAP
                             </h2>
                             <p className="text-[#d4d4d4] font-bold font-body text-xl text-center">
-                                A team has less than <span className="text-white">3</span> trains.<br/>
+                                A team has less than <span className="text-white">3</span> trains.<br />
                                 <span className="text-red-400 font-black">2 Minutes Remaining!</span>
                             </p>
                         </div>
@@ -813,7 +813,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                         <div className="w-1 h-4 rounded-full bg-yellow-400" />
                         <h3 className="text-xs font-bold uppercase tracking-widest text-yellow-400 font-heading">Coin Marketplace</h3>
                     </div>
-                    <CoinMarketplace state={ttrState} />
+                    <CoinMarketplace state={ttrState} params={match.ttrParams} />
                 </div>
 
                 {/* RIGHT: Solve Log */}
