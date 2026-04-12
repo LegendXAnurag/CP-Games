@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '@/app/lib/prisma';
 import { fetchUserSubmissions } from '@/app/lib/codeforces';
 import { broadcastTtrUpdate } from '@/lib/pusherServer';
+import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
+import { fetchReplacementProblem } from '@/lib/problemUtils';
 
 /**
  * POST /api/ttr/checkSolves
@@ -88,12 +90,12 @@ async function runChecks(matchId: string, member: any) {
     const match = await prisma.match.findUnique({
         where: { id: matchId },
         include: {
-            problems: { where: { active: true } },
             solveLog: true,
         },
     });
 
-    if (!match) return;
+    if (!match || !match.ttrState) return;
+    const state = match.ttrState as any;
 
     // Identify new solves for this team
     const newSolves: Array<{
@@ -107,18 +109,19 @@ async function runChecks(matchId: string, member: any) {
     for (const sub of submissions) {
         if (sub.verdict !== 'OK') continue;
 
-        const problem = match.problems.find(
-            (p) => p.contestId === sub.problem.contestId && p.index === sub.problem.index
+        const problem = state.market?.find(
+            (p: any) => p.contestId === sub.problem.contestId && p.index === sub.problem.index
         );
         if (!problem) continue;
 
-        const alreadySolved = match.solveLog.some(
-            (log) =>
+        // Check if solved by THIS team in THIS match's solveLog
+        const alreadyLogged = match.solveLog.some(
+            (log: any) =>
                 log.contestId === problem.contestId &&
                 log.index === problem.index
         );
 
-        if (!alreadySolved) {
+        if (!alreadyLogged) {
             newSolves.push({
                 contestId: problem.contestId,
                 index: problem.index,
@@ -132,7 +135,7 @@ async function runChecks(matchId: string, member: any) {
     if (newSolves.length === 0) return;
 
     // Persist new solves and award coins inside a single transaction
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
         for (const solve of newSolves) {
             // Double-check inside transaction to guard against simultaneous requests
             const existing = await tx.solveLog.findFirst({
@@ -143,6 +146,26 @@ async function runChecks(matchId: string, member: any) {
                 },
             });
             if (existing) continue;
+
+            // Fixed for TTR mode: create the problem row if it doesn't exist, to satisfy the foreign key constraint
+            // We mark it active: false so it doesn't get re-tracked in future polling cycles.
+            const probExists = await tx.problem.findUnique({
+                where: { contestId_index_matchId: { contestId: solve.contestId, index: solve.index, matchId } }
+            });
+            if (!probExists) {
+                const marketProb = state.market?.find((p: any) => p.contestId === solve.contestId && p.index === solve.index);
+                await tx.problem.create({
+                    data: {
+                        contestId: solve.contestId,
+                        index: solve.index,
+                        matchId,
+                        rating: marketProb?.rating || 0,
+                        name: marketProb?.name || `Problem ${solve.index}`,
+                        position: 0,
+                        active: false
+                    }
+                });
+            }
 
             await tx.solveLog.create({
                 data: {
@@ -155,38 +178,7 @@ async function runChecks(matchId: string, member: any) {
                 },
             });
 
-            // Award coins in TTR state
-            const currentMatch = await tx.match.findUnique({
-                where: { id: matchId },
-                select: { ttrState: true },
-            });
-
-            if (!currentMatch?.ttrState) continue;
-
-            const state: any = currentMatch.ttrState;
-
-            if (state.market && Array.isArray(state.market)) {
-                const marketIdx = state.market.findIndex(
-                    (p: any) => p.contestId === solve.contestId && p.index === solve.index
-                );
-
-                if (marketIdx !== -1) {
-                    const problem = state.market[marketIdx];
-                    const row: number = problem.row ?? 0;
-                    const coins = row === 0 ? 2 : row === 1 ? 3 : row === 2 ? 4 : 5;
-
-                    if (state.players?.[solve.team]) {
-                        state.players[solve.team].coins += coins;
-                    }
-
-                    state.market.splice(marketIdx, 1);
-
-                    await tx.match.update({
-                        where: { id: matchId },
-                        data: { ttrState: state as any },
-                    });
-                }
-            }
+            await awardTtrCoinsAndReplenish(tx, matchId, solve, fetchReplacementProblem);
         }
     });
 

@@ -26,25 +26,24 @@ export async function checkSolvesLogic(problems: Problem[], players: Player[]) {
     const trackedProblems = new Set(problems.map(problemKey))
     const claims: Record<string, { team: string; handle: string; time: number; id: number }> = {}
 
-    // Process players in parallel to take advantage of our new coalescing/throttling
-    const limitStr = process.env.CF_LIVE_POLLING_FETCH_LIMIT;
-    const limit = limitStr ? Number(limitStr) : undefined;
-    await Promise.all(players.map(async (player) => {
+    // Process players sequentially to avoid race conditions on the shared `claims` object.
+    // Promise.all previously allowed concurrent callbacks to read/write `claims` simultaneously,
+    // causing the wrong team to sometimes get credit for a solve.
+    for (const player of players) {
         try {
-            const submissions = await fetchUserSubmissions(player.handle, limit) as Array<{
+            const submissions = await fetchUserSubmissions(player.handle) as Array<{
                 id: number,
                 creationTimeSeconds: number,
                 problem: { contestId: number; index: string },
                 verdict: string
             }>;
 
-            if (!submissions || !Array.isArray(submissions)) return;
+            if (!submissions || !Array.isArray(submissions)) continue;
             console.log(`[CheckSolves] Processing ${submissions.length} submissions for ${player.handle}`);
 
             for (const sub of submissions) {
                 if (sub.verdict !== 'OK') continue
                 const key = `${sub.problem.contestId}-${sub.problem.index}`
-                // console.log(`[CheckSolves] Checking ${key} for ${player.handle}`);
                 if (!trackedProblems.has(key)) continue
                 console.log(`[CheckSolves] Match found for ${key} by ${player.handle}`);
                 const existing = claims[key]
@@ -64,7 +63,7 @@ export async function checkSolvesLogic(problems: Problem[], players: Player[]) {
         } catch (err) {
             console.error(`Error processing ${player.handle}`, err)
         }
-    }));
+    }
 
     return claims;
 }

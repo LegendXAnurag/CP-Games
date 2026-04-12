@@ -76,21 +76,16 @@ export async function fetchAndFilterProblems(options: GetProblemsOptions): Promi
             (p) => !solvedSet.has(`${p.contestId}-${p.index}`) && !exclude.includes(`${p.contestId}-${p.index}`)
         );
 
-        let idx = 0;
-        const finalPool = [...unsolved];
-
-        if (finalPool.length < count) {
-            while (finalPool.length < count) {
-                if (idx >= problems.length) idx = 0; // wrapping safety
-                finalPool.push(problems[idx]);
-                idx += 1;
-            }
+        if (unsolved.length === 0 && problems.length > 0) {
+            // Only if we literally have NO unsolved problems in this range, 
+            // fallback to the problems list but log a warning.
+            console.warn(`[fetchAndFilterProblems] No unsolved problems found in range ${minRating}-${maxRating}. Falling back to solved problems.`);
+            const shuffledFallback = [...problems].sort(() => Math.random() - 0.5);
+            return shuffledFallback.slice(0, count);
         }
 
-        const shuffled = finalPool.sort(() => Math.random() - 0.5);
-        const selected = shuffled.slice(0, count);
-
-        return selected;
+        const shuffled = unsolved.sort(() => Math.random() - 0.5);
+        return shuffled.slice(0, count);
     } catch (error) {
         console.error('Error in fetchAndFilterProblems:', error);
         throw error;
