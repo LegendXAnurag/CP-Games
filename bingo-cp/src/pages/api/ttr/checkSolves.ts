@@ -90,12 +90,12 @@ async function runChecks(matchId: string, member: any) {
     const match = await prisma.match.findUnique({
         where: { id: matchId },
         include: {
-            problems: { where: { active: true } },
             solveLog: true,
         },
     });
 
-    if (!match) return;
+    if (!match || !match.ttrState) return;
+    const state = match.ttrState as any;
 
     // Identify new solves for this team
     const newSolves: Array<{
@@ -109,7 +109,7 @@ async function runChecks(matchId: string, member: any) {
     for (const sub of submissions) {
         if (sub.verdict !== 'OK') continue;
 
-        const problem = match.problems.find(
+        const problem = state.market?.find(
             (p: any) => p.contestId === sub.problem.contestId && p.index === sub.problem.index
         );
         if (!problem) continue;
@@ -148,6 +148,26 @@ async function runChecks(matchId: string, member: any) {
                 },
             });
             if (existing) continue;
+
+            // Fixed for TTR mode: create the problem row if it doesn't exist, to satisfy the foreign key constraint
+            // We mark it active: false so it doesn't get re-tracked in future polling cycles.
+            const probExists = await tx.problem.findUnique({
+                where: { contestId_index_matchId: { contestId: solve.contestId, index: solve.index, matchId } }
+            });
+            if (!probExists) {
+                const marketProb = state.market?.find((p: any) => p.contestId === solve.contestId && p.index === solve.index);
+                await tx.problem.create({
+                    data: {
+                        contestId: solve.contestId,
+                        index: solve.index,
+                        matchId,
+                        rating: marketProb?.rating || 0,
+                        name: marketProb?.name || `Problem ${solve.index}`,
+                        position: 0,
+                        active: false
+                    }
+                });
+            }
 
             await tx.solveLog.create({
                 data: {

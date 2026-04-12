@@ -232,7 +232,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                   rating: marketProb.rating || 0,
                   name: marketProb.name || `Problem ${index}`,
                   position: 0,
-                  active: true
+                  active: false
                 }
               });
             }
