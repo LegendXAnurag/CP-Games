@@ -25,10 +25,6 @@ export function buildEnrichedSolveLog(
     ttrParams?: any | null,
 ) {
     return solveLog.map(log => {
-        const tsStr = new Date(log.timestamp).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
         const pName = log.problem?.name || `Problem ${log.index}`;
 
         // Determine coins: prefer row from allProbs, fall back to row-based formula
@@ -57,7 +53,7 @@ export function buildEnrichedSolveLog(
             handle: log.handle || 'Unknown Solver',
             problemName: pName,
             coinsAwarded: coins,
-            timestamp: tsStr,
+            timestamp: new Date(log.timestamp).toISOString(),
         };
     });
 }
