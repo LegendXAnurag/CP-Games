@@ -70,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // Move selected to destinations, clear pending
-        player.destinations = [...player.destinations, ...selectedIds];
+        player.destinations = [...(player.destinations || []), ...selectedIds];
         delete player.pendingDestinations;
 
         await prisma.match.update({
@@ -79,12 +79,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         // Broadcast update
-        await broadcastTtrUpdate(matchId, { action: 'ticketsSelected', team: playerTeam });
+        try {
+            await broadcastTtrUpdate(matchId, { action: 'ticketsSelected', team: playerTeam });
+        } catch (pusherErr) {
+            console.error('Pusher broadcast failed (non-fatal):', pusherErr);
+        }
 
         return res.status(200).json({ success: true });
 
     } catch (error: any) {
-        console.error('Select tickets error:', error);
-        return res.status(500).json({ error: error.message || 'Internal Error' });
+        console.error('Select tickets error:', {
+            message: error.message,
+            stack: error.stack,
+            matchId,
+            token: token?.substring(0, 8) + '...'
+        });
+        return res.status(500).json({ error: `Server Error: ${error.message || 'Unknown'}` });
     }
 }

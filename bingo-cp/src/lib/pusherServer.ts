@@ -5,11 +5,21 @@ let pusherInstance: Pusher | null = null;
 
 export function getPusherServer(): Pusher {
     if (!pusherInstance) {
+        const appId = process.env.app_id || process.env.PUSHER_APP_ID;
+        const key = process.env.key || process.env.NEXT_PUBLIC_PUSHER_KEY;
+        const secret = process.env.secret || process.env.PUSHER_SECRET;
+        const cluster = process.env.cluster || process.env.NEXT_PUBLIC_PUSHER_CLUSTER;
+
+        if (!appId || !key || !secret || !cluster) {
+            console.error('Pusher configuration missing!', { appId: !!appId, key: !!key, secret: !!secret, cluster: !!cluster });
+            throw new Error('Pusher configuration is incomplete');
+        }
+
         pusherInstance = new Pusher({
-            appId: (process.env.app_id || process.env.PUSHER_APP_ID)!.trim(),
-            key: (process.env.key || process.env.NEXT_PUBLIC_PUSHER_KEY)!.trim(),
-            secret: (process.env.secret || process.env.PUSHER_SECRET)!.trim(),
-            cluster: (process.env.cluster || process.env.NEXT_PUBLIC_PUSHER_CLUSTER)!.trim(),
+            appId: appId.trim(),
+            key: key.trim(),
+            secret: secret.trim(),
+            cluster: cluster.trim(),
             useTLS: true,
         });
     }

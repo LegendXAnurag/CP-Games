@@ -57,12 +57,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
         // Broadcast to other members of the same team if they are online
-        await broadcastTtrUpdate(matchId, { action: 'draftUpdated', team: playerTeam, discardedIds });
+        try {
+            await broadcastTtrUpdate(matchId, { action: 'draftUpdated', team: playerTeam, discardedIds });
+        } catch (pusherErr) {
+            console.error('Pusher broadcast failed (non-fatal):', pusherErr);
+        }
 
         return res.status(200).json({ success: true });
 
     } catch (error: any) {
-        console.error('Update draft error:', error);
-        return res.status(500).json({ error: error.message || 'Internal Error' });
+        console.error('Update draft error:', {
+            message: error.message,
+            stack: error.stack,
+            matchId
+        });
+        return res.status(500).json({ error: `Server Error: ${error.message || 'Unknown'}` });
     }
 }

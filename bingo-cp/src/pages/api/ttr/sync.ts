@@ -102,7 +102,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         problems: { where: { active: true } },
                     },
                 });
-                await broadcastTtrUpdate(matchId, { action: 'ticketsAutoCommitted' });
+                try {
+                    await broadcastTtrUpdate(matchId, { action: 'ticketsAutoCommitted' });
+                } catch (pusherErr) {
+                    console.error('Pusher broadcast failed (non-fatal):', pusherErr);
+                }
                 // Use the updated match for the rest of the handler
                 Object.assign(match, updatedMatch);
             }
@@ -150,7 +154,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
     } catch (error: any) {
-        console.error('Sync error:', error);
-        return res.status(500).json({ error: error.message || 'Internal Error' });
+        console.error('Sync error:', {
+            message: error.message,
+            stack: error.stack,
+            matchId
+        });
+        return res.status(500).json({ error: `Server Error: ${error.message || 'Unknown'}` });
     }
 }
