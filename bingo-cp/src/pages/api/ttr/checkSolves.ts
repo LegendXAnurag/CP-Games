@@ -115,8 +115,7 @@ async function runChecks(matchId: string, member: any) {
         const alreadySolved = match.solveLog.some(
             (log) =>
                 log.contestId === problem.contestId &&
-                log.index === problem.index &&
-                log.team === member.team.color
+                log.index === problem.index
         );
 
         if (!alreadySolved) {
@@ -141,7 +140,6 @@ async function runChecks(matchId: string, member: any) {
                     matchId,
                     contestId: solve.contestId,
                     index: solve.index,
-                    team: solve.team,
                 },
             });
             if (existing) continue;
