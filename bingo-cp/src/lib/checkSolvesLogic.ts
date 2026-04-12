@@ -31,7 +31,7 @@ export async function checkSolvesLogic(problems: Problem[], players: Player[]) {
     // causing the wrong team to sometimes get credit for a solve.
     for (const player of players) {
         try {
-            const submissions = await fetchUserSubmissions(player.handle, limit) as Array<{
+            const submissions = await fetchUserSubmissions(player.handle) as Array<{
                 id: number,
                 creationTimeSeconds: number,
                 problem: { contestId: number; index: string },

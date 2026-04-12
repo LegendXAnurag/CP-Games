@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { prisma } from '../../app/lib/prisma';
 import { TTRParams, TTRState, ProblemCell, TTRPlayerState, TTRTrackState } from '../../app/types/match';
 import { fetchUserSubmissions } from '../../app/lib/codeforces';
+import { fetchAndFilterProblems } from '@/app/lib/problems';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {
@@ -23,36 +24,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
         }
 
-        // Fetch problems from Codeforces
-        const cfRes = await fetch('https://codeforces.com/api/problemset.problems');
-        if (!cfRes.ok) {
-            const text = await cfRes.text();
-            console.error("Codeforces API error:", cfRes.status, text.substring(0, 200));
-            throw new Error(`Codeforces API unreachable (Status ${cfRes.status})`);
-        }
-
-        let cfData;
-        try {
-            cfData = await cfRes.json();
-        } catch (e) {
-            const text = await cfRes.text();
-            console.error("Codeforces returned non-JSON:", text.substring(0, 200));
-            throw new Error("Codeforces API returned invalid data");
-        }
-
-        if (cfData.status !== 'OK') {
-            throw new Error('Failed to fetch problems from Codeforces: ' + (cfData.comment || 'Unknown error'));
-        }
-
-        const allProblems = cfData.result.problems as any[];
-
-        // Filter and select problems for each level
-        const levels = [ttrParams.level1, ttrParams.level2, ttrParams.level3, ttrParams.level4];
-        const marketProblems: ProblemCell[] = [];
-        const allProbs: ProblemCell[] = [];
-
-        // Fetch solved problems for all team members
-        const solvedSet = new Set<string>();
         const allHandles: string[] = [];
         teams.forEach((team: any) => {
             const teamHandles = team.members
@@ -61,54 +32,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             allHandles.push(...teamHandles);
         });
 
-        const limitStr = process.env.CF_MATCH_CREATION_FETCH_LIMIT;
-        const limit = limitStr ? Number(limitStr) : undefined;
+        // 2. Resolve picks using centralized filter
+        const pickProblems = async (min: number, max: number, count: number, coins: number, row: number, exclude: string[]) => {
+            const selected = await fetchAndFilterProblems({
+                userHandles: allHandles,
+                minRating: min,
+                maxRating: max,
+                count: count,
+                exclude: exclude
+            });
 
-        if (allHandles.length > 0) {
-            try {
-                const infoRes = await fetch(`https://codeforces.com/api/user.info?handles=${allHandles.join(';')}`);
-                const data = await infoRes.json();
-                if (data.status === 'FAILED') {
-                    return res.status(400).json({ message: data.comment || 'One or more Codeforces handles are invalid or not found' });
-                }
-            } catch (e) {
-                console.error("Error validating handles:", e);
-                return res.status(500).json({ message: 'Failed to validate Codeforces handles' });
-            }
-        }
-
-        await Promise.all(allHandles.map(async (handle) => {
-            try {
-                const submissions = await fetchUserSubmissions(handle, limit);
-                if (Array.isArray(submissions)) {
-                    for (const sub of submissions as Array<any>) {
-                        if (sub.verdict === 'OK' && sub.problem) {
-                            solvedSet.add(`${sub.problem.contestId}-${sub.problem.index}`);
-                        }
-                    }
-                }
-            } catch (e) {
-                console.error(`Error fetching submissions for ${handle}`, e);
-            }
-        }));
-
-        const unsolvedProblems = allProblems.filter(p => !solvedSet.has(`${p.contestId}-${p.index}`));
-
-        const pickProblems = (min: number, max: number, count: number, coins: number, row: number) => {
-            let candidates = unsolvedProblems.filter(p => p.rating >= min && p.rating <= max);
-
-            // Fallback if not enough unsolved problems found
-            if (candidates.length < count) {
-                const fallbackCandidates = allProblems.filter(p => p.rating >= min && p.rating <= max && solvedSet.has(`${p.contestId}-${p.index}`));
-                candidates = [...candidates, ...fallbackCandidates];
-            }
-
-            for (let i = candidates.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-            }
-
-            return candidates.slice(0, count).map((p: any) => ({
+            return selected.map((p: any) => ({
                 contestId: p.contestId,
                 index: p.index,
                 name: p.name,
@@ -119,17 +53,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             } as ProblemCell));
         };
 
-        levels.forEach((level, idx) => {
-            if (!level || level.count === 0) return;
-            const poolSize = 30; // Fetch more candidates than needed for rotation possibilities
-            // Use level.coins if available, fallback to defaults based on index
-            const defaultCoins = idx === 0 ? 2 : idx === 1 ? 3 : idx === 2 ? 4 : 5;
+        const levels = [ttrParams.level1, ttrParams.level2, ttrParams.level3, ttrParams.level4];
+        const marketProblems: ProblemCell[] = [];
+        const allProbs: ProblemCell[] = [];
+        const usedKeys: string[] = [];
+
+        for (let i = 0; i < levels.length; i++) {
+            const level = levels[i];
+            if (!level || level.count === 0) continue;
+
+            const poolSize = 30;
+            const defaultCoins = i === 0 ? 2 : i === 1 ? 3 : i === 2 ? 4 : 5;
             const coins = level.coins !== undefined ? level.coins : defaultCoins;
 
-            const picked = pickProblems(level.min, level.max, poolSize, coins, idx);
+            const picked = await pickProblems(level.min, level.max, poolSize, coins, i, usedKeys);
+
             allProbs.push(...picked);
-            marketProblems.push(...picked.slice(0, level.count));
-        });
+            const initialMarket = picked.slice(0, level.count);
+            marketProblems.push(...initialMarket);
+
+            // Track used problems to avoid duplicates across rows
+            initialMarket.forEach(p => usedKeys.push(`${p.contestId}-${p.index}`));
+        }
 
         const players: Record<string, TTRPlayerState> = {};
         const initialCoins = ttrParams.initialCoins !== undefined ? Number(ttrParams.initialCoins) : 0;
