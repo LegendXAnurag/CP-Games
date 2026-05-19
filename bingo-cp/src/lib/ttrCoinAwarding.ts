@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { getCoinsForRow } from './ttrCoins';
-import { TTRState, TTRParams } from '@/app/types/match';
+import { TTRState, TTRParams } from '@/types/match';
 
 /**
  * Shared logic to award coins for a TTR solve and replenish the market.

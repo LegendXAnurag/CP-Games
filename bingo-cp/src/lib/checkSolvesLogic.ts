@@ -17,7 +17,7 @@ export type Claim = {
     id: number
 }
 
-import { fetchUserSubmissions } from '@/app/lib/codeforces'
+import { fetchUserSubmissions } from '@/lib/codeforces'
 
 // ... existing types ...
 

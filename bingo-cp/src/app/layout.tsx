@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Geist, Geist_Mono, DM_Serif_Display, Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import NavBar from "./components/NavBar";
-import SpotlightAurora from "@/components/SpotlightAurora";
+import NavBar from '@/components/ui/NavBar';
+import SpotlightAurora from "@/components/landing/SpotlightAurora";
 import Script from 'next/script';
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;

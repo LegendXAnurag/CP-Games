@@ -7,8 +7,8 @@ import {
   ArrowRight, Grid3x3, Swords, TrainFront,
   Zap, ShieldCheck, BarChart3,
 } from 'lucide-react';
-import GameModeCard from '@/components/GameModeCard';
-import FeatureCard from '@/components/FeatureCard';
+import GameModeCard from '@/components/landing/GameModeCard';
+import FeatureCard from '@/components/landing/FeatureCard';
 
 /* ─── Animation variants ─────────────────────────────────── */
 const fadeUp: any = {
