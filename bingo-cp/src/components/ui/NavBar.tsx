@@ -4,9 +4,9 @@ import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 const links = [
-    { label: "Bingo", href: '/create-match' },
-    { label: "Tug of War", href: '/tug-mode' },
-    { label: "Ticket to Ride", href: '/create-ttr-match' },
+    { label: "Bingo", href: '/create/bingo' },
+    { label: "Tug of War", href: '/create/tug' },
+    { label: "Ticket to Ride", href: '/create/ttr' },
     { label: "How to Play", href: '/how-to-play' },
 ];
 
