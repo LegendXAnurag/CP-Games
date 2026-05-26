@@ -20,7 +20,7 @@ export async function getServerMatch(id: string) {
   });
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   const { matchId } = Object.fromEntries(req.nextUrl.searchParams);
   if (!matchId || typeof matchId !== 'string') {
     return NextResponse.json({ error: 'Missing or invalid matchId' }, { status: 400 });
@@ -32,4 +32,8 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ match }, { status: 200 });
+}
+
+export async function POST(req: NextRequest) {
+  return GET(req);
 }
