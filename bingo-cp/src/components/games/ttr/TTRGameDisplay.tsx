@@ -534,7 +534,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                             style={{ background: 'rgba(10,10,10,0.9)', border: '1px solid rgba(0,240,255,0.2)', color: '#00f0ff' }}
                         >
                             {match.teams.map((t: any) => (
-                                <option key={t.color} value={t.color}>{t.name}</option>
+                                <option key={t.color} value={t.color} className="bg-[#0a0a0a] text-[#00f0ff]">{t.name}</option>
                             ))}
                         </select>
                     )}

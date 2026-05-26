@@ -130,21 +130,21 @@ export default function TTRTeamsForm({ teams, onTeamsChange }: TTRTeamsFormProps
                                     placeholder="Enter team name"
                                     value={team.name}
                                     onChange={(e) => updateTeam(i, "name", e.target.value)}
-                                    className="bg-white dark:bg-gray-950"
+                                    className="bg-black/20 border-white/10 text-white"
                                 />
                             </div>
 
                             <div>
                                 <Label className="text-xs uppercase font-bold text-gray-500 dark:text-gray-400">Color</Label>
                                 <select
-                                    className={`flex h-10 w-full rounded-md border border-input px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-white dark:bg-gray-950`}
+                                    className="flex h-10 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 disabled:cursor-not-allowed disabled:opacity-50 text-gray-100"
                                     value={team.color}
                                     onChange={(e) => updateTeam(i, "color", e.target.value)}
                                 >
                                     {COLOR_OPTIONS.filter((c) =>
                                         c === team.color || !teams.some((t) => t.color === c)
                                     ).map((color) => (
-                                        <option key={color} value={color}>
+                                        <option key={color} value={color} className="bg-[#0a0a0a] text-white">
                                             {color.charAt(0).toUpperCase() + color.slice(1)}
                                         </option>
                                     ))}
@@ -160,7 +160,7 @@ export default function TTRTeamsForm({ teams, onTeamsChange }: TTRTeamsFormProps
                                                 placeholder={`Handle ${j + 1}`}
                                                 value={member}
                                                 onChange={(e) => updateMember(i, j, e.target.value)}
-                                                className="h-8 text-sm bg-white dark:bg-gray-950"
+                                                className="h-8 text-sm bg-black/20 border-white/10 text-white"
                                             />
                                             {team.members.length > 1 && (
                                                 <Button

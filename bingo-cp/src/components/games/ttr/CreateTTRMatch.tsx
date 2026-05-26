@@ -219,9 +219,9 @@ export default function CreateTTRMatch() {
                                     value={selectedMapId}
                                     onChange={(e) => setSelectedMapId(e.target.value)}
                                 >
-                                    <option value="" disabled>Select a Map...</option>
+                                    <option value="" disabled className="bg-[#0a0a0a] text-white">Select a Map...</option>
                                     {maps.map(m => (
-                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                        <option key={m.id} value={m.id} className="bg-[#0a0a0a] text-white">{m.name}</option>
                                     ))}
                                 </select>
                             </div>

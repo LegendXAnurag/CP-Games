@@ -621,35 +621,35 @@ export default function MapEditor({ initialMap, onSave }: MapEditorProps) {
                                 <h4 className="font-bold text-sm mb-2">Add New Ticket</h4>
                                 <div className="grid grid-cols-2 gap-2 mb-2">
                                     <select
-                                        className="border p-1 rounded"
+                                        className="border p-1 rounded bg-white text-black"
                                         value={newTicket.cityA}
                                         onChange={e => setNewTicket({ ...newTicket, cityA: e.target.value })}
                                     >
-                                        <option value="">Select City A</option>
-                                        {map.data.cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        <option value="" className="bg-white text-black">Select City A</option>
+                                        {map.data.cities.map(c => <option key={c.id} value={c.id} className="bg-white text-black">{c.name}</option>)}
                                     </select>
                                     <select
-                                        className="border p-1 rounded"
+                                        className="border p-1 rounded bg-white text-black"
                                         value={newTicket.cityB}
                                         onChange={e => setNewTicket({ ...newTicket, cityB: e.target.value })}
                                     >
-                                        <option value="">Select City B</option>
-                                        {map.data.cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        <option value="" className="bg-white text-black">Select City B</option>
+                                        {map.data.cities.map(c => <option key={c.id} value={c.id} className="bg-white text-black">{c.name}</option>)}
                                     </select>
                                 </div>
                                 <div className="flex gap-2 mb-2">
                                     <input
-                                        type="number" className="border p-1 rounded w-20" placeholder="Pts"
+                                        type="number" className="border p-1 rounded w-20 bg-white text-black" placeholder="Pts"
                                         value={newTicket.points}
                                         onChange={e => setNewTicket({ ...newTicket, points: parseInt(e.target.value) || 0 })}
                                     />
                                     <select
-                                        className="border p-1 rounded flex-grow"
+                                        className="border p-1 rounded flex-grow bg-white text-black"
                                         value={newTicket.type}
                                         onChange={e => setNewTicket({ ...newTicket, type: e.target.value as 'long' | 'short' })}
                                     >
-                                        <option value="short">Short Route</option>
-                                        <option value="long">Long Route</option>
+                                        <option value="short" className="bg-white text-black">Short Route</option>
+                                        <option value="long" className="bg-white text-black">Long Route</option>
                                     </select>
                                     <button
                                         className="bg-blue-600 text-white px-4 py-1 rounded disabled:opacity-50"

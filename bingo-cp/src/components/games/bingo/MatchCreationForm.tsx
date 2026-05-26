@@ -260,8 +260,8 @@ const MatchCreationForm: React.FC<MatchCreationFormProps> = ({ }) => {
                   onChange={(e) => setSelectedMode(e.target.value as "classic" | "replace")}
                   className="flex h-10 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 disabled:cursor-not-allowed disabled:opacity-50 text-gray-100"
                 >
-                  <option value="classic">Classic</option>
-                  <option value="replace">Replace</option>
+                  <option value="classic" className="bg-[#0a0a0a] text-white">Classic</option>
+                  <option value="replace" className="bg-[#0a0a0a] text-white">Replace</option>
                 </select>
               </div>
 
@@ -287,7 +287,7 @@ const MatchCreationForm: React.FC<MatchCreationFormProps> = ({ }) => {
                   className="flex h-10 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 disabled:cursor-not-allowed disabled:opacity-50 text-gray-100"
                 >
                   {[3, 4, 5, 6].map((size) => (
-                    <option key={size} value={size}>
+                    <option key={size} value={size} className="bg-[#0a0a0a] text-white">
                       {size} x {size}
                     </option>
                   ))}
