@@ -57,10 +57,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Tug of War mode requires exactly 2 teams' }, { status: 400 });
   }
 
+  // Trim and clean handles in teams
+  for (const team of teams) {
+    team.members = (team.members || [])
+      .map((m) => (typeof m === 'string' ? m.trim() : ''))
+      .filter((m) => m !== '');
+  }
+
   // Validate teams have members
   for (const team of teams) {
-    const validMembers = team.members.filter((m) => typeof m === 'string' && m.trim() !== '');
-    if (validMembers.length === 0) {
+    if (team.members.length === 0) {
       return NextResponse.json({ error: `Team "${team.name}" must have at least one member` }, { status: 400 });
     }
   }

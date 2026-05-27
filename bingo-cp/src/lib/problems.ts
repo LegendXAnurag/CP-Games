@@ -21,6 +21,52 @@ export type GetProblemsOptions = {
     exclude?: string[];
 };
 
+// --- Problem Set Caching & Request Coalescing ---
+let cachedProblemsetPromise: Promise<Problem[]> | null = null;
+let cachedProblems: Problem[] | null = null;
+let lastFetchTime = 0;
+const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 Hour Cache
+
+async function getCachedProblemset(): Promise<Problem[]> {
+    const now = Date.now();
+    
+    // 1. Return valid cache if within expiration time
+    if (cachedProblems && (now - lastFetchTime < CACHE_DURATION_MS)) {
+        return cachedProblems;
+    }
+    
+    // 2. Coalesce concurrent requests during fetch
+    if (cachedProblemsetPromise) {
+        return cachedProblemsetPromise;
+    }
+    
+    // 3. Initiate fresh fetch
+    cachedProblemsetPromise = (async () => {
+        try {
+            console.log('[Codeforces Cache] Fetching fresh problemset from Codeforces API...');
+            const response = await fetch('https://codeforces.com/api/problemset.problems');
+            const data = await response.json();
+            if (data.status !== 'OK') {
+                throw new Error('Failed to fetch problems from Codeforces.');
+            }
+            cachedProblems = data.result.problems;
+            lastFetchTime = Date.now();
+            return cachedProblems!;
+        } catch (error) {
+            console.error('[Codeforces Cache] Failed to fetch problemset:', error);
+            if (cachedProblems) {
+                console.warn('[Codeforces Cache] Returning expired cache as fallback');
+                return cachedProblems;
+            }
+            throw error;
+        } finally {
+            cachedProblemsetPromise = null;
+        }
+    })();
+    
+    return cachedProblemsetPromise;
+}
+
 export async function fetchAndFilterProblems(options: GetProblemsOptions): Promise<Problem[]> {
     const {
         minRating = 800,
@@ -31,13 +77,7 @@ export async function fetchAndFilterProblems(options: GetProblemsOptions): Promi
     } = options;
 
     try {
-        const response = await fetch('https://codeforces.com/api/problemset.problems');
-        const data = await response.json();
-        if (data.status !== 'OK') {
-            throw new Error('Failed to fetch problems from Codeforces.');
-        }
-
-        let problems: Problem[] = data.result.problems;
+        let problems: Problem[] = await getCachedProblemset();
 
         problems = problems.filter(
             (p) =>

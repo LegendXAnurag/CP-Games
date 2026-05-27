@@ -14,21 +14,34 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ message: 'At least 2 teams required' }, { status: 400 });
         }
 
+        // Trim and clean handles in teams
+        for (const team of teams) {
+            team.members = (team.members || [])
+                .map((m: any) => typeof m === 'string' ? m.trim() : m?.handle?.trim() || '')
+                .filter((m: string) => m !== '');
+        }
+
         // Validate teams have members
         for (const team of teams) {
-            const validMembers = team.members.filter((m: any) => typeof m === 'string' && m.trim() !== '');
-            if (validMembers.length === 0) {
+            if (team.members.length === 0) {
                 return NextResponse.json({ message: `Team "${team.name}" must have at least one member` }, { status: 400 });
             }
         }
 
-        const allHandles: string[] = [];
-        teams.forEach((team: any) => {
-            const teamHandles = team.members
-                .map((m: any) => typeof m === 'string' ? m.trim() : m?.handle?.trim() || '')
-                .filter((m: string) => m !== '');
-            allHandles.push(...teamHandles);
-        });
+        const allHandles = teams.flatMap((team: any) => team.members);
+
+        if (allHandles.length > 0) {
+            try {
+                const infoRes = await fetch(`https://codeforces.com/api/user.info?handles=${allHandles.join(';')}`);
+                const data = await infoRes.json();
+                if (data.status === 'FAILED') {
+                    return NextResponse.json({ message: data.comment || 'One or more Codeforces handles are invalid or not found' }, { status: 400 });
+                }
+            } catch (e) {
+                console.error("Error validating handles:", e);
+                return NextResponse.json({ message: 'Failed to validate Codeforces handles' }, { status: 500 });
+            }
+        }
 
         // 2. Resolve picks using centralized filter
         const pickProblems = async (min: number, max: number, count: number, coins: number, row: number, exclude: string[]) => {
