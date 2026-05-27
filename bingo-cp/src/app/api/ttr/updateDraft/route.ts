@@ -47,7 +47,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid discarded tickets' }, { status: 400 });
         }
 
-        player.pendingDiscarded = discardedIds;
+        // Enforce the 3 tickets minimum rule
+        const totalCount = (player.destinations?.length || 0) + player.pendingDestinations.length - discardedIds.length;
+        if (totalCount < 3) {
+            return NextResponse.json({ error: 'Must keep at least 3 tickets total' }, { status: 400 });
+        }
+
+        // Permanently remove discarded from pendingDestinations
+        player.pendingDestinations = player.pendingDestinations.filter((id: string) => !discardedIds.includes(id));
+        player.pendingDiscarded = [];
 
         await prisma.match.update({
             where: { id: matchId },

@@ -22,9 +22,10 @@ interface TTRMapProps {
     readOnly?: boolean;
     focusedTicket?: Ticket | null;
     setFocusedTicket?: (t: Ticket | null) => void;
+    onAlert?: (title: string, message: string) => void;
 }
 
-export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, readOnly, focusedTicket, setFocusedTicket }: TTRMapProps) {
+export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, readOnly, focusedTicket, setFocusedTicket, onAlert }: TTRMapProps) {
     const [scale, setScale] = useState(1);
     const containerRef = useRef<HTMLDivElement>(null);
     const [confirmTrack, setConfirmTrack] = useState<Track | null>(null);
@@ -52,6 +53,14 @@ export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, r
         }
     };
 
+    const triggerAlert = (title: string, message: string) => {
+        if (onAlert) {
+            onAlert(title, message);
+        } else {
+            alert(`${title}: ${message}`);
+        }
+    };
+
     const confirmBuildTrack = async () => {
         if (!confirmTrack) return;
 
@@ -68,10 +77,10 @@ export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, r
                 const text = await res.text();
                 try {
                     const data = JSON.parse(text);
-                    alert(data.message || "Failed to build track");
+                    triggerAlert("Failed to Build Track", data.message || "Failed to build track");
                 } catch (e) {
                     console.error("Non-JSON error:", text);
-                    alert("Server error: " + (res.statusText || "Unknown error"));
+                    triggerAlert("Server Error", res.statusText || "Unknown error");
                 }
             } else {
                 const data = await res.json();
@@ -81,7 +90,7 @@ export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, r
             }
         } catch (e) {
             console.error(e);
-            alert("Failed to build track");
+            triggerAlert("Failed to Build Track", "An error occurred while building the track.");
         }
     };
 
@@ -102,10 +111,10 @@ export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, r
                 const text = await res.text();
                 try {
                     const data = JSON.parse(text);
-                    alert(data.message || "Failed to build station");
+                    triggerAlert("Failed to Build Station", data.message || "Failed to build station");
                 } catch (e) {
                     console.error("Non-JSON error:", text);
-                    alert("Server error: " + (res.statusText || "Unknown error"));
+                    triggerAlert("Server Error", res.statusText || "Unknown error");
                 }
             } else {
                 const data = await res.json();
@@ -115,7 +124,7 @@ export default function TTRMap({ matchId, state, currentTeam, token, onUpdate, r
             }
         } catch (e) {
             console.error(e);
-            alert("Failed to build station");
+            triggerAlert("Failed to Build Station", "An error occurred while building the station.");
         }
     };
 

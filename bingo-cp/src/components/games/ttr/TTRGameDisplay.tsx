@@ -11,6 +11,16 @@ import JoinScreen from "../ttr/JoinScreen";
 import { TrainFront, MapPin, CheckCircle2, Ticket as TicketIcon, Clock } from "lucide-react";
 import { getPusherClient } from "@/lib/pusherClient";
 import { motion } from "framer-motion";
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogAction,
+    AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 interface TTRGameDisplayProps {
     match: Match;
@@ -60,6 +70,50 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
     const [discardedPendingIds, setDiscardedPendingIds] = useState<string[]>([]);
     const [isSubmittingTickets, setIsSubmittingTickets] = useState(false);
+
+    // Dialog state
+    const [dialogConfig, setDialogConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        description: string;
+        confirmText?: string;
+        cancelText?: string;
+        onConfirm?: () => void;
+        onCancel?: () => void;
+        variant?: "default" | "destructive";
+    } | null>(null);
+
+    const showAlert = useCallback((title: string, description: string) => {
+        setDialogConfig({
+            isOpen: true,
+            title,
+            description,
+            confirmText: "OK",
+            onConfirm: () => setDialogConfig(null)
+        });
+    }, []);
+
+    const showConfirm = useCallback((
+        title: string,
+        description: string,
+        onConfirm: () => void,
+        confirmText = "Confirm",
+        variant: "default" | "destructive" = "default"
+    ) => {
+        setDialogConfig({
+            isOpen: true,
+            title,
+            description,
+            confirmText,
+            cancelText: "Cancel",
+            onConfirm: () => {
+                onConfirm();
+                setDialogConfig(null);
+            },
+            onCancel: () => setDialogConfig(null),
+            variant
+        });
+    }, []);
 
     const currentTeamObj = match.teams.find(t => t.color === currentTeam);
     const isLeader = currentTeamObj?.members[0]?.handle === user?.handle;
@@ -256,28 +310,36 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
 
         if (totalCount < 3) return;
 
-        setIsSubmittingTickets(true);
-        try {
-            const res = await fetch('/api/ttr/selectTickets', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    matchId: match.id,
-                    token: user?.token,
-                    selectedIds: keptIds
-                }),
-            });
-            if (res.ok) {
-                syncState();
-            } else {
-                const data = await res.json();
-                alert(data.error || 'Failed to select tickets');
-            }
-        } catch (err) {
-            console.error('Error selecting tickets:', err);
-        } finally {
-            setIsSubmittingTickets(false);
-        }
+        showConfirm(
+            "Confirm Ticket Selection",
+            `Do you want to keep all ${totalCount} tickets?`,
+            async () => {
+                setIsSubmittingTickets(true);
+                try {
+                    const res = await fetch('/api/ttr/selectTickets', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            matchId: match.id,
+                            token: user?.token,
+                            selectedIds: keptIds
+                        }),
+                    });
+                    if (res.ok) {
+                        syncState();
+                    } else {
+                        const data = await res.json();
+                        showAlert('Error', data.error || 'Failed to select tickets');
+                    }
+                } catch (err) {
+                    console.error('Error selecting tickets:', err);
+                    showAlert('Error', 'An error occurred while selecting tickets.');
+                } finally {
+                    setIsSubmittingTickets(false);
+                }
+            },
+            "Keep Tickets"
+        );
     };
 
     const updateRemoteDraft = async (discardedIds: string[]) => {
@@ -763,6 +825,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     readOnly={isSpectator || isMatchEnded}
                     focusedTicket={focusedTicket}
                     setFocusedTicket={setFocusedTicket}
+                    onAlert={showAlert}
                 />
 
                 {/* END GAME LEADERBOARD OVERLAY */}
@@ -1059,6 +1122,42 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     )}
                 </div>
             </div>
+
+            {dialogConfig && (
+                <AlertDialog open={dialogConfig.isOpen} onOpenChange={(open) => {
+                    if (!open) {
+                        dialogConfig.onCancel?.();
+                        setDialogConfig(null);
+                    }
+                }}>
+                    <AlertDialogContent className="bg-zinc-950/95 border border-zinc-800 text-white backdrop-blur-md max-w-sm sm:rounded-2xl">
+                        <AlertDialogHeader>
+                            <AlertDialogTitle className="text-white font-black uppercase tracking-wider font-heading text-sm">{dialogConfig.title}</AlertDialogTitle>
+                            <AlertDialogDescription className="text-zinc-400 font-body text-xs mt-1">
+                                {dialogConfig.description}
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter className="mt-2 flex items-center gap-2">
+                            {dialogConfig.cancelText && (
+                                <AlertDialogCancel 
+                                    onClick={dialogConfig.onCancel}
+                                    className="flex-1 bg-transparent border border-zinc-800 text-zinc-300 hover:bg-zinc-900 hover:text-white text-xs font-semibold rounded-lg"
+                                >
+                                    {dialogConfig.cancelText}
+                                </AlertDialogCancel>
+                            )}
+                            <AlertDialogAction 
+                                onClick={dialogConfig.onConfirm}
+                                className={`flex-1 text-xs font-bold uppercase tracking-widest rounded-lg ${dialogConfig.variant === 'destructive' 
+                                    ? "bg-red-600 hover:bg-red-700 text-white hover:shadow-[0_0_15px_rgba(239,68,68,0.4)]" 
+                                    : "bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-[0_0_15px_rgba(16,185,129,0.4)]"}`}
+                            >
+                                {dialogConfig.confirmText || 'Confirm'}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
         </div>
     );
 }
