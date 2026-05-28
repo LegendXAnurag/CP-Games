@@ -52,12 +52,100 @@ interface SolveEntry {
     timestamp: string;
 }
 
+function LobbyTimer({ startTime }: { startTime: Date }) {
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    const msLeft = startTime.getTime() - now.getTime();
+    return <span className="text-4xl font-mono text-emerald-400 font-mono">{formatTime(msLeft)}</span>;
+}
+
+function HeaderMatchTimer({ matchEnd, finalLapEndTime, onEnd }: { matchEnd: Date, finalLapEndTime?: string, onEnd?: () => void }) {
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(id);
+    }, []);
+    
+    let actualEnd = matchEnd;
+    if (finalLapEndTime) {
+        const finalLapEnd = new Date(finalLapEndTime);
+        if (finalLapEnd < actualEnd) {
+            actualEnd = finalLapEnd;
+        }
+    }
+    const msLeft = actualEnd.getTime() - now.getTime();
+    const isEnded = msLeft <= 0;
+
+    useEffect(() => {
+        if (isEnded) onEnd?.();
+    }, [isEnded, onEnd]);
+
+    const color = isEnded ? '#ef4444' : msLeft < 5 * 60 * 1000 ? '#ef4444' : '#00f0ff';
+
+    return (
+        <span
+            className="text-3xl font-mono font-black tabular-nums tracking-widest font-mono"
+            style={{ color, textShadow: `0 0 20px ${color}60` }}
+        >
+            {isEnded ? "ENDED" : formatTime(msLeft)}
+        </span>
+    );
+}
+
+function RouteSelectionTimerOverlay({ startTime }: { startTime: Date }) {
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    const gameStartedAt = startTime.getTime();
+    const selectionDeadline = gameStartedAt + 5 * 60 * 1000;
+    const selectionMsLeft = selectionDeadline - now.getTime();
+    if (selectionMsLeft <= 0) return null;
+
+    return (
+        <motion.div
+            drag
+            dragMomentum={false}
+            className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center pointer-events-auto cursor-grab active:cursor-grabbing animate-in fade-in slide-in-from-top duration-700"
+        >
+            <div className="bg-[#050505] backdrop-blur-xl border border-[#00f0ff]/30 px-6 py-2.5 rounded-[24px] flex items-center gap-4 shadow-[0_20px_60px_rgba(0,0,0,0.4),0_0_20px_rgba(0,240,255,0.1)]">
+                <div className="w-10 h-10 rounded-full bg-[#00f0ff]/10 flex items-center justify-center border border-[#00f0ff]/20">
+                    <Clock className="w-5 h-5 text-[#00f0ff] animate-pulse" />
+                </div>
+                <div className="flex flex-col">
+                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#00f0ff]/60 font-black leading-none mb-1">Auto-Confirming In</span>
+                    <span className="text-2xl font-mono font-black text-[#00f0ff] tabular-nums tracking-wider" style={{ textShadow: '0 0 20px rgba(0,240,255,0.3)' }}>
+                        {Math.floor(selectionMsLeft / 60000)}:{(Math.floor(selectionMsLeft / 1000) % 60).toString().padStart(2, '0')}
+                    </span>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
 function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false }: TTRGameDisplayProps) {
     const { user, isSpectator, isLoading } = useTtrAuth();
     const [ttrState, setTtrState] = useState<TTRState | null>(match.ttrState as unknown as TTRState);
     const [lastSync, setLastSync] = useState<Date>(new Date());
     const [solveLog, setSolveLog] = useState<SolveEntry[]>([]);
-    const [now, setNow] = useState(new Date());
+    
+    const [isMatchEnded, setIsMatchEnded] = useState(() => {
+        const start = new Date(match.startTime);
+        let end = new Date(start.getTime() + match.durationMinutes * 60 * 1000);
+        if (match.ttrState?.finalLapEndTime) {
+            const finalLapEnd = new Date(match.ttrState.finalLapEndTime);
+            if (finalLapEnd < end) {
+                end = finalLapEnd;
+            }
+        }
+        return Date.now() >= end.getTime();
+    });
+
     const [focusedTicket, setFocusedTicketRaw] = useState<Ticket | null>(null);
     // Tracks whether the user has manually overridden the focus (so auto-focus doesn't fight them)
     const userClearedFocusRef = useRef<boolean>(false);
@@ -134,11 +222,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         setFocusedTicketRaw(t);
     };
 
-    // Clock tick
-    useEffect(() => {
-        const id = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(id);
-    }, []);
+
 
     // Auto-highlight completed routes — only when user hasn't manually cleared focus
     useEffect(() => {
@@ -217,9 +301,6 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
             matchEnd = finalLapEnd;
         }
     }
-
-    const msLeft = matchEnd.getTime() - now.getTime();
-    const isMatchEnded = msLeft <= 0;
 
     useEffect(() => {
         if (isMatchEnded && !showPenalties) {
@@ -420,7 +501,6 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
     // ── Pre-game lobby ──────────────────────────────
     if (!hasStarted) {
         const matchStart = new Date(match.startTime);
-        const countdown = formatTime(matchStart.getTime() - now.getTime());
 
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-[#050505] gap-8 p-6 relative overflow-hidden">
@@ -441,7 +521,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                     {/* Countdown */}
                     <div className="mt-6 px-8 py-4 rounded-2xl" style={{ background: 'rgba(10,10,10,0.9)', border: '1px solid rgba(16,185,129,0.2)' }}>
                         <p className="text-[9px] uppercase tracking-widest text-[#a3a3a3] font-heading mb-1">Match starts in</p>
-                        <span className="text-4xl font-mono text-emerald-400 font-mono">{countdown}</span>
+                        <LobbyTimer startTime={matchStart} />
                     </div>
                 </div>
 
@@ -478,7 +558,7 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
         </div>
     );
 
-    const timerColor = isMatchEnded ? '#ef4444' : msLeft < 5 * 60 * 1000 ? '#ef4444' : '#00f0ff';
+
 
     // ─── Scorecard — sort by score descending ──────────────────────────────
     const allTickets = ttrState.mapData?.tickets || TICKETS;
@@ -550,12 +630,11 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
 
                 {/* Center: Timer */}
                 <div className="flex-1 flex justify-center items-center">
-                    <span
-                        className="text-3xl font-mono font-black tabular-nums tracking-widest font-mono"
-                        style={{ color: timerColor, textShadow: `0 0 20px ${timerColor}60` }}
-                    >
-                        {isMatchEnded ? "ENDED" : formatTime(msLeft)}
-                    </span>
+                    <HeaderMatchTimer 
+                        matchEnd={matchEnd} 
+                        finalLapEndTime={ttrState.finalLapEndTime || undefined} 
+                        onEnd={() => setIsMatchEnded(true)} 
+                    />
                     {ttrState.finalLapEndTime && !isMatchEnded && (
                         <span className="ml-3 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase animate-pulse border border-red-500/50 bg-red-500/10 text-red-400 font-heading">
                             Final Lap!
@@ -789,32 +868,9 @@ function TTRGameContent({ match, currentTeam, setCurrentTeam, hasStarted = false
                 }}
             >
                 {/* Route Selection Timer Overlay */}
-                {player?.pendingDestinations && player.pendingDestinations.length > 0 && (() => {
-                    const gameStartedAt = new Date(match.startTime).getTime();
-                    const selectionDeadline = gameStartedAt + 5 * 60 * 1000;
-                    const selectionMsLeft = selectionDeadline - now.getTime();
-                    if (selectionMsLeft <= 0) return null;
-
-                    return (
-                        <motion.div
-                            drag
-                            dragMomentum={false}
-                            className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center pointer-events-auto cursor-grab active:cursor-grabbing animate-in fade-in slide-in-from-top duration-700"
-                        >
-                            <div className="bg-[#050505] backdrop-blur-xl border border-[#00f0ff]/30 px-6 py-2.5 rounded-[24px] flex items-center gap-4 shadow-[0_20px_60px_rgba(0,0,0,0.4),0_0_20px_rgba(0,240,255,0.1)]">
-                                <div className="w-10 h-10 rounded-full bg-[#00f0ff]/10 flex items-center justify-center border border-[#00f0ff]/20">
-                                    <Clock className="w-5 h-5 text-[#00f0ff] animate-pulse" />
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase tracking-[0.2em] text-[#00f0ff]/60 font-black leading-none mb-1">Auto-Confirming In</span>
-                                    <span className="text-2xl font-mono font-black text-[#00f0ff] tabular-nums tracking-wider" style={{ textShadow: '0 0 20px rgba(0,240,255,0.3)' }}>
-                                        {Math.floor(selectionMsLeft / 60000)}:{(Math.floor(selectionMsLeft / 1000) % 60).toString().padStart(2, '0')}
-                                    </span>
-                                </div>
-                            </div>
-                        </motion.div>
-                    );
-                })()}
+                {player?.pendingDestinations && player.pendingDestinations.length > 0 && (
+                    <RouteSelectionTimerOverlay startTime={matchStart} />
+                )}
 
                 <TTRMap
                     matchId={match.id}

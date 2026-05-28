@@ -4,7 +4,7 @@ import { checkSolvesLogic, Problem, Player, Claim } from '@/lib/checkSolvesLogic
 import { fetchAndFilterProblems } from '@/lib/problems';
 import { TTRParams, TTRState } from '@/types/match';
 import { buildEnrichedSolveLog } from '@/lib/enrichSolveLog';
-import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
+import { awardTtrCoinsAndReplenish, preFetchTtrReplacements } from '@/lib/ttrCoinAwarding';
 import { fetchReplacementProblem } from '@/lib/problemUtils';
 import { broadcastTtrUpdate } from '@/lib/pusherServer';
 
@@ -15,10 +15,6 @@ export async function POST(req: NextRequest) {
     if (!matchId) return NextResponse.json({ error: 'matchId required' }, { status: 400 })
     // const match = await prisma.match.findUnique({ where: { id: matchId } });
 
-    const old = await prisma.match.findUnique({ where: { id: matchId }, select: { id: true } });
-    if (!old) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 })
-    }
     const now = new Date();
     const cooldownSeconds = Number(process.env.POLLING_COOLDOWN_SECONDS) || 60;
     const cutoff = new Date(now.getTime() - cooldownSeconds * 1000);
@@ -42,7 +38,11 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      if (cachedMatch?.mode === 'ttr' && cachedMatch?.ttrState) {
+      if (!cachedMatch) {
+        return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+      }
+
+      if (cachedMatch.mode === 'ttr' && cachedMatch.ttrState) {
         const state = cachedMatch.ttrState as any;
         state.solveLog = buildEnrichedSolveLog(cachedMatch.solveLog, state, cachedMatch.ttrParams);
         cachedMatch.ttrState = state;
@@ -439,9 +439,13 @@ export async function POST(req: NextRequest) {
 
     // TTR MODE: Award coins and replenish market
     if (match.mode === 'ttr' && newSolves.length > 0) {
+      // Pre-fetch TTR replacements outside the transaction
+      const replacements = await preFetchTtrReplacements(match, newSolves, fetchReplacementProblem);
+
       await prisma.$transaction(async (tx: any) => {
         for (const solve of newSolves) {
-          await awardTtrCoinsAndReplenish(tx, matchId, solve, fetchReplacementProblem);
+          const preFetched = replacements[`${solve.contestId}-${solve.index}`] || null;
+          await awardTtrCoinsAndReplenish(tx, matchId, solve, preFetched);
         }
       });
     }

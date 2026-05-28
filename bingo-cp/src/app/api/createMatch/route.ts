@@ -45,10 +45,12 @@ export async function POST(req: NextRequest) {
       members: string[];
     }>;
   };
+  const finalGridSize = (mode === 'tug' && tugType === 'single') ? 1 : gridSize;
+
   // Validate gridSize for non-tug modes, or when tug mode is grid type
   if (mode === 'tug' && tugType === 'single') {
     // For tug single mode, we only need 1 problem
-  } else if (![3, 4, 5, 6].includes(gridSize)) {
+  } else if (![3, 4, 5, 6].includes(finalGridSize)) {
     return NextResponse.json({ error: 'invalid gridSize' }, { status: 400 });
   }
 
@@ -90,7 +92,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // For tug single mode, fetch only 1 problem; otherwise fetch grid
-    const problemCount = (mode === 'tug' && tugType === 'single') ? 1 : gridSize * gridSize;
+    const problemCount = (mode === 'tug' && tugType === 'single') ? 1 : finalGridSize * finalGridSize;
 
     const selectedProblems = await fetchAndFilterProblems({
       userHandles: allHandles,
@@ -103,8 +105,8 @@ export async function POST(req: NextRequest) {
       (p, idx) => ({
         contestId: p.contestId,
         index: p.index,
-        row: Math.floor(idx / gridSize),
-        col: idx % gridSize,
+        row: Math.floor(idx / finalGridSize),
+        col: idx % finalGridSize,
         rating: p.rating ?? 0,
         name: p.name,
         maxPoints: 0, // maxPoints is missing in ProblemWithGrid definition in original file? waiting for view_file
@@ -120,7 +122,7 @@ export async function POST(req: NextRequest) {
         replaceIncrement: Cmode === 'replace' ? Number(replaceIncrement ?? 100) : undefined, // maybe validate later
         minRating: minRating ?? undefined,
         maxRating: maxRating ?? undefined,
-        gridSize,
+        gridSize: finalGridSize,
         showRatings: Boolean(showRatings),
         tugThreshold: Cmode === 'tug' ? Number(tugThreshold ?? 2000) : undefined,
         tugType: Cmode === 'tug' ? (tugType ?? 'grid') : undefined,
@@ -137,7 +139,7 @@ export async function POST(req: NextRequest) {
         matchId: match.id,
         rating: p.rating ?? 0,
         name: p.name,
-        position: p.row * gridSize + p.col,
+        position: p.row * finalGridSize + p.col,
         maxPoints: undefined,
         active: true,
       })),

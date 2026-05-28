@@ -8,19 +8,19 @@ const MIN_REQUEST_DELAY_MS = 250; // Delay between new outgoing requests
 
 const submissionCache = new Map<string, CachedResponse>();
 const pendingRequests = new Map<string, Promise<any>>();
-let lastRequestTime = 0;
+let nextRequestTime = 0;
 
 /**
  * Delays execution to ensure a minimum gap between requests.
  */
 async function throttle() {
   const now = Date.now();
-  const timeSinceLast = now - lastRequestTime;
-  if (timeSinceLast < MIN_REQUEST_DELAY_MS) {
-    const delay = MIN_REQUEST_DELAY_MS - timeSinceLast;
+  const scheduledTime = Math.max(now, nextRequestTime);
+  nextRequestTime = scheduledTime + MIN_REQUEST_DELAY_MS;
+  const delay = scheduledTime - now;
+  if (delay > 0) {
     await new Promise((resolve) => setTimeout(resolve, delay));
   }
-  lastRequestTime = Date.now();
 }
 
 /**

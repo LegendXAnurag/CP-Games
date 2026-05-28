@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchUserSubmissions } from '@/lib/codeforces';
 import { broadcastTtrUpdate } from '@/lib/pusherServer';
-import { awardTtrCoinsAndReplenish } from '@/lib/ttrCoinAwarding';
+import { awardTtrCoinsAndReplenish, preFetchTtrReplacements } from '@/lib/ttrCoinAwarding';
 import { fetchReplacementProblem } from '@/lib/problemUtils';
 
 /**
@@ -132,6 +132,20 @@ async function runChecks(matchId: string, member: any) {
 
     if (newSolves.length === 0) return;
 
+    // Pre-fetch TTR replacements outside the transaction to avoid locking DB connections on slow network calls
+    const matchData = await prisma.match.findUnique({
+        where: { id: matchId },
+        select: {
+            ttrState: true,
+            ttrParams: true,
+            teams: { include: { members: true } }
+        }
+    });
+
+    const replacements = matchData 
+        ? await preFetchTtrReplacements(matchData, newSolves, fetchReplacementProblem)
+        : {};
+
     // Persist new solves and award coins inside a single transaction
     await prisma.$transaction(async (tx: any) => {
         for (const solve of newSolves) {
@@ -176,7 +190,8 @@ async function runChecks(matchId: string, member: any) {
                 },
             });
 
-            await awardTtrCoinsAndReplenish(tx, matchId, solve, fetchReplacementProblem);
+            const preFetched = replacements[`${solve.contestId}-${solve.index}`] || null;
+            await awardTtrCoinsAndReplenish(tx, matchId, solve, preFetched);
         }
     });
 

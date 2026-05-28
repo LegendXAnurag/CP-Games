@@ -57,7 +57,7 @@ model Problem {
   active    Boolean  @default(true) // NEW
 
   @@id([contestId, index, matchId])
-
+  @@index([matchId])
 }
 
 model Team {
@@ -67,6 +67,8 @@ model Team {
   members Member[]
   match   Match?   @relation("MatchTeams", fields: [matchId], references: [id])
   matchId String?
+
+  @@index([matchId])
 }
 
 model Member {
@@ -77,6 +79,8 @@ model Member {
   claimed      Boolean  @default(false)
   secret       String?
   lastPolledAt DateTime @default(now())
+
+  @@index([teamId])
 }
 
 model SolveLog {
@@ -91,6 +95,7 @@ model SolveLog {
   matchId   String
   problem   Problem  @relation(fields: [contestId, index, matchId], references: [contestId, index, matchId])
 
+  @@index([matchId])
 }
 
 model TtrMap {
