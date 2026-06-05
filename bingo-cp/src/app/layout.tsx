@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, DM_Serif_Display, Space_Grotesk, Inter, JetBrains_Mo
 import "./globals.css";
 import NavBar from '@/components/ui/NavBar';
 import SpotlightAurora from "@/components/landing/SpotlightAurora";
+import { GoogleAnalytics } from '@next/third-parties/google';
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
@@ -45,6 +46,9 @@ const jetbrains = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "CP Games",
   description: "Level Up Your Competitive Programming Skills",
+  verification: {
+    google: "QaV8bbHb5MyzrMoFzt5jIVxAo_HV_8yDZOT6VVNzSmM",
+  },
 };
 
 export default function RootLayout({
@@ -54,20 +58,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        {/* Google tag (gtag.js) */}
-        <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}></script>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GA_ID}');
-            `,
-          }}
-        />
-      </head>
+      {GA_ID && <GoogleAnalytics gaId={GA_ID} />}
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} ${spaceGrotesk.variable} ${inter.variable} ${jetbrains.variable} antialiased dark`}
       >
