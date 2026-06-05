@@ -1,4 +1,4 @@
-import { TTRState, TTRPlayerState, Track, City, Ticket } from '@/app/types/match';
+import { TTRState, TTRPlayerState, Track, City, Ticket } from '@/types/match';
 import { TRACKS, TICKETS } from './ttrData';
 
 export function getTrackCost(track: Track): number {

@@ -1,4 +1,4 @@
-import { City, Track } from '@/app/types/match';
+import { City, Track } from '@/types/match';
 
 export const CITIES: City[] = [
     { id: 'edinburgh', name: 'Edinburgh', x: 14.90, y: 4.19 },

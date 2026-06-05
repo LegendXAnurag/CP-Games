@@ -1,4 +1,4 @@
-import { TTRParams } from "@/app/types/match";
+import { TTRParams } from '@/types/match';
 
 export function getCoinsForRow(row: number, params?: TTRParams): number {
     if (!params) return row === 0 ? 2 : row === 1 ? 3 : row === 2 ? 4 : 5;

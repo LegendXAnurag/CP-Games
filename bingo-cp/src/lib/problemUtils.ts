@@ -1,4 +1,4 @@
-import { fetchAndFilterProblems } from '@/app/lib/problems';
+import { fetchAndFilterProblems } from '@/lib/problems';
 
 /**
  * Fetch a replacement problem from Codeforces that hasn't been used yet in the match.

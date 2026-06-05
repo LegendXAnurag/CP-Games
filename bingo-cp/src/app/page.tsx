@@ -7,8 +7,8 @@ import {
   ArrowRight, Grid3x3, Swords, TrainFront,
   Zap, ShieldCheck, BarChart3,
 } from 'lucide-react';
-import GameModeCard from '@/components/GameModeCard';
-import FeatureCard from '@/components/FeatureCard';
+import GameModeCard from '@/components/landing/GameModeCard';
+import FeatureCard from '@/components/landing/FeatureCard';
 
 /* ─── Animation variants ─────────────────────────────────── */
 const fadeUp: any = {
@@ -26,7 +26,7 @@ const stagger = {
 /* ─── Game mode card data ─────────────────────────────────── */
 const MODES = [
   {
-    href: '/create-match',
+    href: '/create/bingo',
     label: 'Bingo',
     tag: 'MULTIPLAYER',
     icon: Grid3x3,
@@ -38,7 +38,7 @@ const MODES = [
     bullets: ['5×5 Problem Grid', 'Auto CF Verification', 'Multi-team Support'],
   },
   {
-    href: '/tug-mode',
+    href: '/create/tug',
     label: 'Tug of War',
     tag: '1v1 · TEAM',
     icon: Swords,
@@ -50,7 +50,7 @@ const MODES = [
     bullets: ['Classic & Grid Modes', 'Rating-based Difficulty', 'Tug Threshold Win'],
   },
   {
-    href: '/create-ttr-match',
+    href: '/create/ttr',
     label: 'Ticket to Ride',
     tag: 'STRATEGY',
     icon: TrainFront,
@@ -192,7 +192,7 @@ export default function HomePage(): React.JSX.Element {
               </p>
             </div>
 
-            <Link href="/create-match" className="shrink-0 relative z-10 w-full md:w-auto">
+            <Link href="/create/bingo" className="shrink-0 relative z-10 w-full md:w-auto">
               <button
                 className="w-full md:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl text-[15px] font-bold uppercase tracking-wider hover:scale-105 transition-all duration-300 font-heading bg-white text-black hover:bg-[#00f0ff]/10 hover:text-white border-[2px] border-transparent hover:border-[#00f0ff]"
                 style={{

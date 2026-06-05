@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "framer-motion",
+      "@radix-ui/react-alert-dialog",
+      "@radix-ui/react-tabs"
+    ],
+  },
 };
 
 export default nextConfig;

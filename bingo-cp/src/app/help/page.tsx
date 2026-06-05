@@ -10,7 +10,7 @@ const gameModes = [
     color: "#00f0ff",
     bg: "rgba(0,240,255,0.08)",
     border: "rgba(0,240,255,0.2)",
-    href: "/create-match",
+    href: "/create/bingo",
   },
   {
     icon: Swords,
@@ -18,7 +18,7 @@ const gameModes = [
     color: "#ef4444",
     bg: "rgba(239,68,68,0.08)",
     border: "rgba(239,68,68,0.2)",
-    href: "/tug-mode",
+    href: "/create/tug",
   },
   {
     icon: TrainFront,
@@ -26,7 +26,7 @@ const gameModes = [
     color: "#10b981",
     bg: "rgba(16,185,129,0.08)",
     border: "rgba(16,185,129,0.2)",
-    href: "/create-ttr-match",
+    href: "/create/ttr",
   },
 ];
 
