@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { TTRParams, TTRState, ProblemCell, TTRPlayerState, TTRTrackState } from '@/types/match';
 import { fetchUserSubmissions } from '@/lib/codeforces';
 import { fetchAndFilterProblems } from '@/lib/problems';
+import { setMatchBuffer } from '@/lib/matchProblemBuffer';
 
 export async function POST(req: NextRequest) {
     
@@ -69,11 +70,16 @@ export async function POST(req: NextRequest) {
         const allProbs: ProblemCell[] = [];
         const usedKeys: string[] = [];
 
+        // Buffer size per rating range: max(20 * players, 10)
+        const totalPlayers = allHandles.length;
+        const bufferPerLevel = Math.max(20 * totalPlayers, 10);
+
         for (let i = 0; i < levels.length; i++) {
             const level = levels[i];
             if (!level || level.count === 0) continue;
 
-            const poolSize = 30;
+            // Fetch enough for market + buffer for this rating range
+            const poolSize = level.count + bufferPerLevel;
             const defaultCoins = i === 0 ? 2 : i === 1 ? 3 : i === 2 ? 4 : 5;
             const coins = level.coins !== undefined ? level.coins : defaultCoins;
 
@@ -241,6 +247,22 @@ export async function POST(req: NextRequest) {
                 problems: { create: [] }
             }
         });
+
+        // Store the spare TTR problems (allProbs minus market) in the server-side buffer
+        // so replacement tiles can be served without re-fetching from CF during the match.
+        const marketKeys = new Set(marketProblems.map(p => `${p.contestId}-${p.index}`));
+        const ttrBufferProblems = allProbs
+            .filter(p => !marketKeys.has(`${p.contestId}-${p.index}`))
+            .map(p => ({
+                contestId: p.contestId,
+                index: p.index,
+                name: p.name ?? `Problem ${p.index}`,
+                rating: p.rating ?? 0,
+            }));
+
+        if (ttrBufferProblems.length > 0) {
+            setMatchBuffer(match.id, ttrBufferProblems);
+        }
 
         return NextResponse.json({ id: match.id }, { status: 200 });
 

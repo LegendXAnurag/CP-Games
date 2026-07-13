@@ -1,0 +1,1051 @@
+================================================================================
+      CP-GAMES — COMPLETE INTERNSHIP INTERVIEW PREPARATION GUIDE
+         (Formatted as: "Explain this project as if preparing me for interviews")
+================================================================================
+
+PROJECT: CP-Games (bingo-cp)
+STACK:   Next.js 16 · TypeScript · PostgreSQL · Prisma ORM · Pusher · Codeforces API
+LINK:    https://github.com/LegendXAnurag/CP-Games
+
+================================================================================
+SECTION 1: 30-SECOND ELEVATOR PITCH
+================================================================================
+
+"CP-Games is a real-time multiplayer platform I built that gamifies competitive
+programming practice. Teams of programmers compete in game formats — Bingo,
+Tug of War, and Ticket to Ride — where solving Codeforces problems acts as
+in-game moves. The platform polls the Codeforces API to verify solves in
+real-time, updates a shared game board, and pushes live changes to all players
+via WebSockets. It's built with Next.js, PostgreSQL through Prisma ORM, and
+Pusher for real-time sync — deployed on Vercel with Supabase as the database."
+
+[Use this when: walking into the room, networking events, quick intro in phone screens]
+
+================================================================================
+SECTION 2: DETAILED 2-3 MINUTE EXPLANATION ("Tell me about this project")
+================================================================================
+
+"So the idea came from a frustration in our CP club — solving problems alone
+is demotivating. People would come to practice sessions but just sit there
+grinding problems in isolation. I wanted to make it actually competitive and
+social.
+
+I built CP-Games, a platform with three game modes built on top of the
+Codeforces problem archive. In Bingo mode, teams get a 5x5 grid of rated
+Codeforces problems. When someone from your team solves a problem on
+Codeforces, that tile gets claimed in your color — first team to complete a
+row, column, or diagonal wins. In Tug of War, solving harder problems 'pulls
+the rope' further in your direction. And in Ticket to Ride, solving problems
+earns coins that you spend to claim train routes on a Europe map, just like
+the board game.
+
+On the technical side, the interesting challenge was that I'm not building a
+judge — Codeforces is the judge. My backend polls the Codeforces public API
+every 60 seconds per match, fetches each player's recent accepted submissions,
+and compares them against the match's tracked problems. If someone solved a
+tracked problem, a SolveLog record is created in PostgreSQL and the game state
+updates accordingly.
+
+To avoid hammering the CF API, I built a three-layer optimization: in-memory
+caching per user handle, request coalescing so duplicate concurrent calls
+share one promise, and throttling with a 250ms minimum gap between outgoing
+requests. At the match level, I use a DB-level atomic update pattern — writing
+lastPolledAt to PostgreSQL with a WHERE clause filter — so that in a serverless
+environment where many browser clients are calling the API simultaneously, only
+one instance does the actual polling per cooldown window.
+
+For real-time updates in Ticket to Ride mode, I used Pusher — a hosted
+WebSocket service — because Next.js API routes are serverless and can't hold
+persistent connections. The server triggers events on a per-match Pusher
+channel, and all browser clients subscribed to that channel get instant
+updates.
+
+The database schema uses Prisma ORM with PostgreSQL on Supabase. I made
+heavy use of Prisma transactions for operations like: create solve log →
+deactivate old problem → create replacement problem — all atomically to
+prevent state corruption under concurrent solves.
+
+Overall it was a project that touched real-time systems, third-party API
+integration, database design, distributed state management, and game logic
+algorithm design — all in a single application."
+
+================================================================================
+SECTION 3: PROBLEM STATEMENT & MOTIVATION
+================================================================================
+
+PROBLEM:
+  - Competitive programming practice is often solo and unmotivating
+  - CP clubs struggle to make group sessions engaging
+  - No existing platform combines Codeforces problem-solving with team game formats
+  - Building a full judge from scratch is a massive undertaking
+
+MOTIVATION:
+  - Make CP practice social, team-based, and fun without rebuilding CF
+  - Leverage Codeforces as the judge (huge problem archive, trusted verdicts)
+  - Add game-theory elements (strategy, territory control, tug mechanics)
+  - No login friction — Codeforces handle IS your identity
+
+WHY IT'S NON-TRIVIAL:
+  - Real-time multi-team synchronization across a serverless architecture
+  - External API dependency (CF) with rate limits and potential downtime
+  - Multiple concurrent players updating shared game state → race conditions
+  - Three fundamentally different game logics in one codebase
+
+================================================================================
+SECTION 4: SYSTEM ARCHITECTURE & DATA FLOW (STEP-BY-STEP)
+================================================================================
+
+COMPONENTS:
+  1. Next.js Frontend (React, hosted on Vercel)
+  2. Next.js API Routes (serverless functions on Vercel)
+  3. PostgreSQL Database (hosted on Supabase)
+  4. Codeforces API (external, public)
+  5. Pusher (hosted WebSocket service)
+
+FLOW — MATCH CREATION:
+  Step 1: User fills match creation form (game mode, rating range, teams, handles)
+  Step 2: Browser POSTs to /api/createMatch
+  Step 3: Server validates CF handles via user.info API (rejects invalid handles)
+  Step 4: Server fetches full CF problemset (cached 1hr), filters by rating range
+  Step 5: Server fetches each player's solved problems, removes already-solved ones
+  Step 6: Server randomly selects N problems (N = gridSize²)
+  Step 7: Prisma creates Match, Problem, Team, Member records in one transaction
+  Step 8: Returns matchId → browser navigates to /match/{matchId}
+
+FLOW — LIVE GAME (BINGO / TUG):
+  Step 1: Game page loads, fetches full match state from /api/getMatch
+  Step 2: Sets up polling interval (every POLL_INTERVAL_MS milliseconds)
+  Step 3: Each poll: POST /api/poll-submissions with { matchId }
+  Step 4: Server checks DB-level cooldown (atomic UPDATE with WHERE lastPolledAt < cutoff)
+  Step 5: If cooldown not expired → return cached match state (no CF API call)
+  Step 6: If cooldown expired → fetch submissions for ALL players in parallel
+  Step 7: checkSolvesLogic compares submissions to tracked problems
+  Step 8: New solves found → create SolveLog entries via Prisma transactions
+  Step 9: For replace mode → deactivate problem, fetch+create replacement
+  Step 10: For tug mode → update tugCount atomically inside transaction
+  Step 11: Return full updated match state
+  Step 12: Browser re-renders game board, checks win conditions
+
+FLOW — LIVE GAME (TTR):
+  Additional to above:
+  Step 8b: Award coins to team for solved market problem
+  Step 8c: Replenish market with a new unsolved problem
+  Step 9: Broadcast via Pusher: pusher.trigger(`match-{id}`, 'ttr-update', payload)
+  Step 10: All connected clients receive Pusher event → immediately re-fetch /api/ttr/sync
+  Step 11: Player clicks "Buy Route" → POST /api/ttr/buildTrack
+           → validates coins, trains → updates ttrState JSON blob → broadcasts again
+
+================================================================================
+SECTION 5: TECHNOLOGIES USED & WHY EACH WAS CHOSEN
+================================================================================
+
+NEXT.JS 16 (App Router)
+  What: React framework with file-system routing and built-in API routes
+  Why: Collocates frontend and backend in one project. API routes deploy as
+       serverless functions on Vercel automatically. App Router with Server
+       Components improves initial load performance.
+  Alternative considered: Express.js + Create React App (more boilerplate,
+       two separate projects to deploy and maintain)
+
+TYPESCRIPT 5
+  What: Statically typed JavaScript
+  Why: Prisma generates TypeScript types from the DB schema automatically.
+       Complex nested state (TTR board, solve maps) would be error-prone
+       without types. Catches mistakes at compile time, not in production.
+
+POSTGRESQL + PRISMA ORM
+  What: Relational DB + TypeScript ORM
+  Why PostgreSQL: ACID transactions are essential for correct concurrent state
+       updates. Relational model fits (Match → Teams → Members, etc.).
+  Why Prisma: Schema-first workflow, auto-generated typed client, excellent
+       migration tooling. `prisma.$transaction()` used for atomic multi-step ops.
+  Hosted on: Supabase (free tier PostgreSQL with PgBouncer connection pooling)
+
+PUSHER (pusher + pusher-js)
+  What: Hosted WebSocket-as-a-Service
+  Why NOT raw WebSockets: Serverless functions can't hold persistent connections.
+       They terminate after responding to a request.
+  Why Pusher: Server calls pusher.trigger() → Pusher holds the WebSocket
+       connections and delivers events. Works perfectly with serverless.
+  Used for: TTR real-time board updates
+
+TAILWIND CSS v4
+  What: Utility-first CSS framework
+  Why: Rapid prototyping, consistent design tokens, responsive design trivial
+       to implement. No custom CSS files needed for most components.
+
+FRAMER MOTION v12
+  What: React animation library
+  Why: Declarative animation API (variants, staggerChildren). Used for
+       hero entrance animations and hover effects. Smooth without writing
+       CSS keyframes manually.
+
+RADIX UI + SHADCN/UI
+  What: Headless accessible UI primitives + pre-styled component collection
+  Why: Building accessible dialogs, tabs, selects from scratch is complex.
+       Radix handles ARIA roles, focus trapping, keyboard navigation correctly.
+       Shadcn provides styled versions using Tailwind.
+
+LUCIDE REACT
+  What: Icon library (~1000 SVG icons as React components)
+  Why: Tree-shakeable (only bundle icons you use), consistent style, TypeScript support.
+
+DATE-FNS v4
+  What: Functional date manipulation library
+  Why: Lightweight, pure functions (no mutation), tree-shakeable. Used for
+       formatting match timestamps and countdowns.
+
+REACT-CONFETTI
+  What: Confetti animation component
+  Why: One-line win celebration animation. No need to build from scratch.
+
+UUID v14
+  What: UUID generation library
+  Why: Generating unique identifiers for various temporary keys client-side.
+
+VERCEL SPEED INSIGHTS
+  What: Performance monitoring for Core Web Vitals
+  Why: Automatic real-user performance data. Catches LCP/CLS regressions in prod.
+
+================================================================================
+SECTION 6: YOUR LIKELY CONTRIBUTIONS & RESPONSIBILITIES
+================================================================================
+
+As the builder of this project, you were responsible for:
+
+SYSTEM DESIGN:
+  - Designing the polling architecture (client polls server → server polls CF)
+  - Choosing Pusher over raw WebSockets given serverless constraints
+  - Designing the cooldown system using DB timestamps to prevent API spam
+  - Designing the ttrState as a JSON blob (vs. normalized tables)
+
+DATABASE:
+  - Writing the entire Prisma schema (all 6 models)
+  - Designing composite primary keys for the Problem model
+  - Adding the `active` boolean for replace mode problem deactivation
+  - Writing database migrations (in /prisma/migrations/)
+
+BACKEND / API:
+  - Implementing the 3-layer CF API optimization (cache + coalesce + throttle)
+  - Writing the checkSolvesLogic algorithm (parallel fetch, tie-breaking)
+  - Implementing all game mode branches in poll-submissions
+  - Writing Prisma transactions for atomic state updates
+  - Implementing the ttrLogic.ts BFS algorithm for route completion checking
+  - Implementing Pusher server-side broadcasting
+
+FRONTEND:
+  - Building game board React components for all three modes
+  - Implementing the polling loop with setInterval/useEffect patterns
+  - Building the match creation forms with validation
+  - Adding Framer Motion animations on the landing page
+  - Setting up Pusher client subscription for TTR
+
+DEVOPS / INFRASTRUCTURE:
+  - Setting up Supabase database with connection pooling
+  - Configuring Vercel deployment with environment variables
+  - Writing the seed script for development data
+
+================================================================================
+SECTION 7: KEY TECHNICAL CONCEPTS TO UNDERSTAND DEEPLY
+================================================================================
+
+1. SERVERLESS ARCHITECTURE
+   - Functions spin up per request, no persistent state
+   - Why you can't use WebSockets directly in Next.js API routes
+   - Cold start problem and how to mitigate it
+   - Why shared in-memory state doesn't work across serverless instances
+
+2. DATABASE TRANSACTIONS & ACID
+   - Atomicity: All or nothing
+   - Consistency: DB constraints always satisfied
+   - Isolation: Concurrent transactions don't interfere
+   - Durability: Committed data survives failures
+   - Why transactions matter for concurrent solves
+
+3. POLLING vs. WEBHOOKS vs. WEBSOCKETS
+   - Polling: Client asks server every N seconds
+   - Webhooks: Server pushes to you when event happens (CF doesn't support this)
+   - WebSockets: Persistent bidirectional connection
+   - Trade-offs in latency, resource usage, serverless compatibility
+
+4. RACE CONDITIONS & HOW TO PREVENT THEM
+   - Two users solving the same problem simultaneously
+   - Without transactions: both create duplicate SolveLog entries
+   - With transactions + findFirst check: second one sees existing record and skips
+
+5. CACHING STRATEGIES
+   - In-memory cache: fastest, lost on restart, not shared across instances
+   - Cache invalidation: how long is data "fresh enough"?
+   - Request coalescing: don't make duplicate requests, share promises
+   - Cache-aside pattern: check cache → miss → fetch → populate cache
+
+6. PRISMA ORM CONCEPTS
+   - Schema-first development
+   - Migrations (prisma migrate dev)
+   - Composite primary keys (@@id)
+   - Indexes for query performance (@@index)
+   - Include for eager loading related records
+   - Transactions ($transaction)
+
+7. GRAPH ALGORITHMS (BFS in ttrLogic.ts)
+   - How adjacency list is built from claimed tracks
+   - BFS guarantees finding a path if one exists
+   - Visited set prevents infinite loops
+   - Used to verify destination ticket completion
+
+8. REACT PATTERNS USED
+   - useEffect for side effects (polling intervals, subscriptions)
+   - Cleanup functions (clearInterval, channel.unbind)
+   - useState for local component state
+   - Lifting state up
+   - Optimistic UI updates
+
+9. API DESIGN
+   - REST principles (POST for mutations, GET for reads)
+   - HTTP status codes (200, 400, 404, 500)
+   - Why you return the updated state from mutation endpoints (avoids extra fetch)
+   - Idempotency considerations
+
+10. ENVIRONMENT VARIABLES & SECURITY
+    - NEXT_PUBLIC_ prefix = exposed to browser bundle
+    - Without prefix = server-only (secrets like DB URL, Pusher secret)
+    - Never commit .env to git
+
+================================================================================
+SECTION 8: COMMON INTERVIEW QUESTIONS ABOUT THIS PROJECT
+================================================================================
+
+CATEGORY A — UNDERSTANDING THE PROJECT
+
+Q1. What does this project do, in simple terms?
+Q2. Why did you choose to build on top of Codeforces rather than your own judge?
+Q3. How does the system know when someone solves a problem?
+Q4. What happens if two players solve the same problem at the same time?
+Q5. How do you prevent cheating (e.g., a player entering someone else's handle)?
+Q6. What is the role of the database in this project?
+Q7. How does real-time work in this project?
+Q8. Why three game modes? How do they differ technically?
+
+CATEGORY B — TECHNICAL DEEP DIVES
+
+Q9.  Walk me through what happens when I click "Create Match."
+Q10. Walk me through what happens when a player solves a problem on Codeforces.
+Q11. Explain the polling cooldown mechanism.
+Q12. What is request coalescing and why did you implement it?
+Q13. Why did you use Pusher instead of raw WebSockets?
+Q14. Why did you use Prisma transactions, and give me an example?
+Q15. How does the problem selection algorithm work?
+Q16. Explain the BFS algorithm in your Ticket to Ride logic.
+Q17. How does tug of war handle concurrent score updates?
+Q18. What does `lastPolledAt` do and why is it in the database?
+
+CATEGORY C — DESIGN & ARCHITECTURE
+
+Q19. How would you scale this to handle 10,000 simultaneous matches?
+Q20. What would you change if you could rebuild this from scratch?
+Q21. How would you add authentication to this project?
+Q22. What happens if the Codeforces API goes down?
+Q23. How would you add a new game mode?
+Q24. Why is ttrState stored as a JSON blob instead of relational tables?
+Q25. How would you implement a spectator/replay feature?
+
+CATEGORY D — DEBUGGING & CHALLENGES
+
+Q26. What was the hardest bug you faced building this?
+Q27. How did you handle the problem of serverless functions not sharing state?
+Q28. How do you ensure a problem isn't shown to a team that already solved it?
+Q29. What happens if a user enters an invalid Codeforces handle?
+Q30. How did you test this project? What could you have tested better?
+
+================================================================================
+SECTION 9: STRONG SAMPLE ANSWERS TO THOSE QUESTIONS
+================================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+Q4. What happens if two players solve the same problem at the same time?
+──────────────────────────────────────────────────────────────────────────────
+
+"Great question — this is actually one of the trickier concurrency problems I
+had to solve. The issue is: two players from different teams might solve the
+same bingo tile within the same polling cycle. Without protection, both could
+get credit.
+
+I handle this in two places:
+
+First, in checkSolvesLogic.ts, the algorithm determines the 'winner' BEFORE
+touching the database. It iterates through all players' submissions and assigns
+each problem to whoever solved it with the earliest timestamp. If timestamps
+are identical (same second), the lower Codeforces submission ID wins — since
+CF auto-increments submission IDs, the smaller ID was submitted first.
+
+Second, when writing to the database, every solve is wrapped in a Prisma
+transaction. Inside the transaction, there's a `findFirst` check: if a
+SolveLog already exists for that (contestId, index, matchId) combination, we
+skip the insert and return. This prevents duplicates even if two server
+instances somehow process the same solve simultaneously.
+
+So the claim goes to the earliest real solve, and the DB write is atomic and
+idempotent."
+
+──────────────────────────────────────────────────────────────────────────────
+Q11. Explain the polling cooldown mechanism.
+──────────────────────────────────────────────────────────────────────────────
+
+"The challenge is: in a serverless environment, multiple browser clients for
+the same match are all independently calling POST /api/poll-submissions. If
+there are 10 players in a match, all their browsers might call the API within
+the same second. Without a cooldown, you'd make 10 sets of CF API calls — one
+per client — which is wasteful and could get you rate-limited.
+
+I solved this with a database-level atomic cooldown. Each Match record has a
+`lastPolledAt` timestamp. When a poll request comes in, I run:
+
+  UPDATE match
+  SET lastPolledAt = NOW()
+  WHERE id = matchId AND lastPolledAt < (NOW() - interval)
+
+This is a single atomic SQL operation. PostgreSQL's row-level locking ensures
+only ONE of the concurrent requests updates the row. If it updates 1 row —
+we're the designated poller this cycle. If it updates 0 rows — the cooldown
+hasn't expired, someone else already polled recently, and we return cached
+match state.
+
+This means regardless of how many clients are connected, the CF API is only
+called once per cooldown window per match. The cooldown is configurable via
+the POLLING_COOLDOWN_SECONDS environment variable."
+
+──────────────────────────────────────────────────────────────────────────────
+Q13. Why did you use Pusher instead of raw WebSockets?
+──────────────────────────────────────────────────────────────────────────────
+
+"This came down to a fundamental constraint of serverless architecture. Next.js
+API routes — when deployed on Vercel — are serverless functions. They work like
+this: a request comes in, the function spins up, handles the request, responds,
+and then terminates. The function doesn't 'stay alive' between requests.
+
+WebSockets require a persistent, long-lived connection. The client connects once
+and the server holds that connection open indefinitely. You can't do that in a
+function that terminates after each request.
+
+Pusher solves this by being the middleman that holds the connections. My server
+just calls pusher.trigger(channelName, eventName, payload) — a simple HTTP POST
+to Pusher's API. Pusher then delivers that event to all connected browser clients
+subscribed to that channel. My server function terminates immediately after the
+trigger call, but the clients maintain their WebSocket connection with Pusher's
+servers.
+
+An alternative would have been to use a persistent server (like a Node.js
+process on a VPS with socket.io), but that would lose the zero-ops serverless
+deployment benefit. For a side project at this scale, Pusher's free tier was the
+right trade-off."
+
+──────────────────────────────────────────────────────────────────────────────
+Q9. Walk me through what happens when I click "Create Match."
+──────────────────────────────────────────────────────────────────────────────
+
+"Sure. When you click Create Match, the browser sends a POST request to
+/api/createMatch with a JSON body containing the game configuration: mode,
+rating range, grid size, and team details with Codeforces handles.
+
+The first thing the server does is validate the Codeforces handles. It calls
+the CF user.info API with all handles concatenated. If any handle is invalid,
+CF returns status FAILED, and we immediately return a 400 error to the client.
+
+Assuming handles are valid, the server fetches problems. It gets the full
+Codeforces problemset — this is cached in server memory for one hour, so it's
+usually instant. It filters this list to problems within the specified rating
+range and excludes special contest problems. Then it fetches each player's
+accepted submissions in parallel using Promise.all, builds a 'solved set,' and
+removes problems that any player has already solved. The remaining unsolved
+problems are shuffled and the first N are selected (N = gridSize²).
+
+Then a series of database writes happen: create the Match record, bulk-create
+all Problem records with their grid positions, create each Team, and create
+each Member. These are separate operations but done sequentially since each
+depends on the previous IDs.
+
+Finally, the API returns the new match's ID, and the browser navigates to
+/match/{matchId} where players see the game board."
+
+──────────────────────────────────────────────────────────────────────────────
+Q16. Explain the BFS algorithm in Ticket to Ride.
+──────────────────────────────────────────────────────────────────────────────
+
+"In Ticket to Ride, each team has destination tickets — pairs of cities that
+they must connect with a continuous train route. At the end of the game, if
+you've connected the cities, you get bonus points; if not, you lose points.
+
+To check whether a team has successfully connected two cities, I implemented a
+BFS (Breadth-First Search) in ttrLogic.ts's getCompletedRoute function.
+
+First, I build an adjacency list — a map where each city points to its
+neighbors — but ONLY including tracks that this team has claimed or stationed
+on. A station allows a team to use an opponent's track.
+
+Then I start BFS from city1. I maintain a queue of {city, path} pairs and a
+visited set. I dequeue a city, check if it's city2 (destination reached). If
+not, I look at its neighbors in the adjacency list, add unvisited ones to the
+queue with the path extended by the connecting track, and mark them visited.
+
+If the queue empties without finding city2, there's no connected path.
+
+I chose BFS over DFS because BFS finds the shortest path first, but here I
+just need reachability, so either would work. BFS tends to be more memory
+predictable for large graphs. The visited set prevents infinite loops in the
+cyclic graph formed by train routes."
+
+──────────────────────────────────────────────────────────────────────────────
+Q19. How would you scale this to 10,000 simultaneous matches?
+──────────────────────────────────────────────────────────────────────────────
+
+"At 10,000 matches, the main bottleneck would be Codeforces API calls. With
+our current architecture, each match polls every 60 seconds, and each poll
+calls CF's user.status for every player. At 10 players per match, that's
+100,000 CF API calls per minute — which would definitely get us rate-limited or
+blocked.
+
+I'd redesign the polling layer. Instead of one polling job per match, I'd have
+a centralized polling service — a background worker — that fetches submissions
+for each unique CF handle only ONCE per interval, then distributes the results
+to all matches that contain that player. With 10k matches and potentially shared
+players, this could reduce CF API calls by 10-100x.
+
+For the database, 10k concurrent matches would need read replicas and connection
+pooling. Supabase already provides PgBouncer, but at that scale I'd look at
+read replicas for heavy SELECT queries on game state.
+
+For real-time, Pusher's free tier maxes out at 100 connections. We'd need their
+paid Business plan or switch to a self-hosted WebSocket solution like Socket.io
+on a dedicated server, or use Ably as an alternative.
+
+I'd also add a Redis cache layer between the API and the database for hot match
+state — reducing DB load for frequently-accessed matches."
+
+──────────────────────────────────────────────────────────────────────────────
+Q22. What happens if the Codeforces API goes down?
+──────────────────────────────────────────────────────────────────────────────
+
+"Honestly, this is a known weakness of the current architecture. If CF's API
+goes down, our fetchUserSubmissions calls throw errors. I handle this by
+returning an empty array on failure — so the polling cycle runs but finds no
+new solves, and the game state doesn't change. The game stalls but doesn't crash.
+
+The cache helps somewhat. If CF was up 10 seconds ago, we return cached
+submission data for up to CACHE_DURATION_MS. But if CF is down for longer,
+players will notice things aren't updating.
+
+For a production version, I'd add: 1) A retry queue with exponential backoff
+for failed CF API calls. 2) An admin endpoint to manually mark a problem as
+solved — useful during CF outages or CF maintainance windows. 3) A status
+indicator on the game page that shows 'CF API is currently unreachable' so
+players know it's not a bug in the game. 4) Possibly a fallback to the CF API's
+mirror or an unofficial CF API client that's more resilient."
+
+================================================================================
+SECTION 10: FOLLOW-UP QUESTIONS TO VERIFY YOU BUILT IT
+================================================================================
+
+These are questions interviewers use to verify genuine contribution vs. reading docs.
+For each question, a genuine builder would answer confidently and specifically.
+
+──────────────────────────────────────────────────────────────────────────────
+1. "You mentioned a composite primary key on Problem — what exactly are those three fields
+   and why can't you just use an auto-increment ID?"
+──────────────────────────────────────────────────────────────────────────────
+ANSWER:
+"The three fields are contestId, index, and matchId. Codeforces identifies
+problems by (contestId, index) — for example, contest 1800, problem 'C'. That
+same problem could appear in multiple matches. So I added matchId to scope it.
+The composite key ensures uniqueness: you can't have the same CF problem twice
+in the same match. I also used this composite key as the foreign key target in
+SolveLog — so a solve log entry precisely references which problem in which match.
+
+The reason not to use auto-increment: I need to look up problems by (contestId,
+index, matchId) during polling. With an auto-increment ID, I'd need an index
+anyway and couldn't guarantee uniqueness of the actual data combination. The
+composite PK gives me both the uniqueness constraint and the lookup index in one."
+
+──────────────────────────────────────────────────────────────────────────────
+2. "You said you fetch replacements before the transaction — why exactly?"
+──────────────────────────────────────────────────────────────────────────────
+ANSWER:
+"Database transactions hold locks on rows they've touched. If I made an external
+network call — like the CF API call to fetch a replacement problem — inside the
+transaction, that transaction would hold its locks for however long the network
+call takes. That could be 500ms to 5 seconds. During that time, no other
+operation can write to those locked rows, effectively blocking other players'
+solve updates.
+
+So the pattern I used is: do the external API call first, store the result in
+a variable, THEN open the transaction and use the pre-fetched result. The
+transaction itself is fast (pure DB operations), minimizing lock hold time.
+This is a standard pattern in distributed systems — never do I/O inside a
+transaction."
+
+──────────────────────────────────────────────────────────────────────────────
+3. "What does the `active` field on Problem do specifically?"
+──────────────────────────────────────────────────────────────────────────────
+ANSWER:
+"In replace mode, when a problem is solved, it needs to be swapped out for a
+harder one. But I can't just DELETE the problem row — SolveLog entries have a
+foreign key pointing to it, and the solve history matters.
+
+So instead, I set active = false on the solved problem and create a NEW Problem
+row for the replacement with the same position but different contestId/index and
+higher rating. The game board query filters to WHERE active = true, so players
+only see the current problems. The deactivated problem remains in the database
+to maintain referential integrity with the SolveLog."
+
+──────────────────────────────────────────────────────────────────────────────
+4. "Walk me through the ttrState JSON structure — what does it actually look like?"
+──────────────────────────────────────────────────────────────────────────────
+ANSWER:
+"The ttrState JSON has a few key sections:
+
+`players` — an object keyed by team color:
+  { 'blue': { coins: 12, score: 10, trainsLeft: 35, stationsLeft: 3,
+              routes: ['track_london_paris'], destinations: ['ticket_1'] },
+    'red': { ... } }
+
+`tracks` — an object keyed by track ID:
+  { 'track_london_paris': { id: '...', claimedBy: 'blue', stationedBy: [] },
+    'track_paris_berlin': { id: '...', claimedBy: null, stationedBy: [] } }
+
+`market` — array of current Codeforces problems available to solve for coins:
+  [{ contestId: 1234, index: 'B', rating: 1500, name: 'Problem Name' }, ...]
+
+`mapData` — optional custom map (tracks, cities, tickets arrays for non-default maps)
+
+`solveLog` — enriched solve history with coin awards attached
+
+I chose JSON because this state is always read and written as a whole unit —
+never partially queried. It also has a variable structure (different maps have
+different track counts), which would make normalization very awkward."
+
+──────────────────────────────────────────────────────────────────────────────
+5. "What does NEXT_PUBLIC_ mean in your environment variables?"
+──────────────────────────────────────────────────────────────────────────────
+ANSWER:
+"In Next.js, environment variables are server-only by default — they're only
+accessible in server-side code like API routes and server components. If you
+try to access process.env.MY_VAR in a client component, you get undefined.
+
+The NEXT_PUBLIC_ prefix tells Next.js's build system to inline that variable's
+value into the client-side JavaScript bundle. So NEXT_PUBLIC_PUSHER_KEY gets
+baked into the browser code and is accessible on the client.
+
+This is why I have both PUSHER_SECRET (server-only, in .env without prefix)
+and NEXT_PUBLIC_PUSHER_KEY (client-accessible). The secret key must never go
+to the browser — it would allow anyone to trigger Pusher events as your app.
+The public key is safe to expose — it only allows subscribing to channels,
+not triggering events."
+
+================================================================================
+SECTION 11: DESIGN, SCALABILITY, SECURITY & PERFORMANCE CONSIDERATIONS
+================================================================================
+
+--- DESIGN ---
+
+Single Responsibility: Each API route does one thing.
+  /api/poll-submissions   → check and record new solves
+  /api/createMatch        → create a new match
+  /api/ttr/buildTrack     → handle one TTR board action
+  This makes debugging easier — you know exactly which route to check.
+
+Separation of Concerns:
+  /src/lib/ contains business logic (checkSolvesLogic, ttrLogic, codeforces)
+  /src/app/api/ contains HTTP handling
+  /src/components/ contains UI
+  This means you could swap Next.js for Express and reuse all the lib code.
+
+--- SCALABILITY ---
+
+Current limitations:
+  - CF API calls: O(players per match × matches polling simultaneously)
+  - DB connections: Serverless + Supabase PgBouncer handles this well to ~1000
+  - Pusher: Free tier = 100 simultaneous connections
+
+Scale-up plan:
+  - Centralized polling worker (one background job per unique CF handle)
+  - Redis for hot match state (reduce DB reads under high load)
+  - Pusher paid tier or self-hosted WebSocket server (Socket.io)
+  - Read replicas for PostgreSQL
+
+--- SECURITY ---
+
+GOOD:
+  - No passwords (CF handle = identity, no PII stored)
+  - All secrets in env vars, not in code
+  - Prisma parameterized queries prevent SQL injection
+  - Transactions prevent race conditions and double-inserts
+  - CF handle validation at match creation (can't enter fake handles)
+
+GAPS:
+  - No rate limiting on createMatch (could spam create thousands of matches)
+  - No CSRF protection on API endpoints
+  - Member secret tokens stored in plaintext (should be hashed)
+  - No authorization checks: anyone with a matchId can call poll-submissions
+
+--- PERFORMANCE ---
+
+Current optimizations:
+  - CF problemset cached 1 hour (avoids ~1MB fetch on every match creation)
+  - User submission cache 10 seconds (prevents per-client CF spam)
+  - Request coalescing (one in-flight request serves multiple callers)
+  - Throttling (250ms minimum between outgoing CF requests)
+  - DB-level cooldown (one poll per match per interval across all clients)
+  - Promise.all for parallel player fetching (N times faster than sequential)
+  - DB indexes on all foreign keys (fast JOINs)
+
+Metrics to track:
+  - CF API response time (p50, p95, p99)
+  - /api/poll-submissions latency
+  - DB query time for match state fetch
+  - Core Web Vitals (tracked via @vercel/speed-insights)
+
+================================================================================
+SECTION 12: REALISTIC DEVELOPMENT CHALLENGES & HOW TO DISCUSS THEM
+================================================================================
+
+CHALLENGE 1: The Cooldown Race Condition
+"My first implementation used an in-memory timestamp variable to track when the
+last poll happened. It worked locally but broke in production — Vercel spins up
+multiple instances of the serverless function, each with their own memory. So
+each instance thought it was the first to poll, and all of them called CF's API
+simultaneously. I fixed this by moving the cooldown state to the database using
+an atomic UPDATE with a WHERE clause, which works correctly across any number
+of instances."
+
+CHALLENGE 2: Transactions With External API Calls
+"In replace mode, I originally fetched the replacement problem INSIDE the
+Prisma transaction. This caused slow transaction times because the transaction
+was holding DB locks while waiting for the CF network call. I refactored to
+fetch the replacement problem BEFORE opening the transaction, cache the result,
+then use it inside the transaction. This made the critical section much faster."
+
+CHALLENGE 3: Composite Primary Key Foreign References
+"The SolveLog table references Problem via a composite foreign key (contestId,
+index, matchId). Getting Prisma's syntax for composite foreign key relations
+correct took debugging — you have to use `fields: [contestId, index, matchId],
+references: [contestId, index, matchId]` explicitly. The schema also required
+`@@id([contestId, index, matchId])` instead of a single @id field."
+
+CHALLENGE 4: TTR State Synchronization
+"For Ticket to Ride, the game state is complex — tracks, player coins, routes,
+tickets all interrelated. Initially I was letting clients apply state changes
+locally (optimistic updates) without server confirmation, which caused
+desynchronization between players. I refactored to always write to the DB first,
+then broadcast the authoritative state via Pusher. Clients never apply changes
+locally that aren't confirmed by the server."
+
+CHALLENGE 5: Codeforces API Downtime
+"During testing, CF's API would periodically return 503 errors or malformed
+JSON. I had to add try/catch inside the fetch calls and gracefully return empty
+arrays instead of letting errors propagate up and crash the polling cycle.
+I also discovered that CF sometimes returns HTML error pages instead of JSON,
+so I added a separate try/catch for the JSON parsing step."
+
+================================================================================
+SECTION 13: POSSIBLE IMPROVEMENTS & FUTURE WORK
+================================================================================
+
+SHORT-TERM IMPROVEMENTS:
+  1. Rate limiting on /api/createMatch (e.g., max 10 matches/hour per IP)
+  2. Hash member secrets instead of storing plaintext
+  3. CSRF tokens for API endpoints
+  4. Better mobile responsiveness for TTR map canvas
+
+MEDIUM-TERM FEATURES:
+  5. Codeforces OAuth for handle ownership verification
+  6. Spectator mode (read-only match URL)
+  7. Match history and win/loss tracking across sessions
+  8. Admin controls (pause match, manually award solves during CF outages)
+  9. Pusher for all modes (not just TTR) for instant updates
+  10. Problem tag filtering at match creation
+
+LONG-TERM FEATURES:
+  11. Centralized polling worker (scale to 10k+ simultaneous matches)
+  12. Redis cache layer for hot match state
+  13. Tournament bracket system (series of matches)
+  14. Custom map editor for TTR mode
+  15. Mobile app (React Native with same backend)
+  16. Leaderboard and player profiles
+  17. Discord bot integration (notify when match is created, sends match link)
+
+================================================================================
+SECTION 14: IMPORTANT TERMINOLOGY & BUZZWORDS
+================================================================================
+
+ARCHITECTURAL TERMS:
+  Serverless           — Functions that spin up per request (Vercel, AWS Lambda)
+  Request Coalescing   — Multiple callers sharing one in-flight request/promise
+  Polling              — Client repeatedly asks server for updates
+  Pub/Sub              — Publisher sends events; subscribers receive them (Pusher)
+  WebSocket            — Persistent bidirectional connection (vs. HTTP request/response)
+  Race Condition       — Two processes competing for the same resource
+  Atomic Operation     — Completes fully or not at all (no partial state)
+  ACID                 — Atomicity, Consistency, Isolation, Durability (DB properties)
+  Idempotent           — Same operation can be repeated without different effects
+  Cold Start           — Serverless function startup latency from idle state
+  Connection Pooling   — Reusing DB connections (PgBouncer/Supabase)
+
+DATABASE TERMS:
+  ORM                  — Object Relational Mapper (Prisma maps JS objects to DB rows)
+  Composite Key        — Primary key made of multiple columns
+  Foreign Key          — Reference to another table's primary key
+  Index                — Data structure for fast lookups (B-tree)
+  Migration            — Tracked, version-controlled DB schema change
+  Transaction          — Atomic group of DB operations
+  Upsert               — Update if exists, insert if not
+
+FRONTEND TERMS:
+  App Router           — Next.js routing system using /app directory
+  Server Component     — React component rendered on server (no hooks/state)
+  Client Component     — React component rendered in browser ('use client')
+  Hydration            — Process of attaching React event handlers to server HTML
+  Code Splitting       — Bundling only code needed for current page
+  Core Web Vitals      — LCP, FID/INP, CLS — Google's performance metrics
+  Headless UI          — Components with functionality but no default styles (Radix)
+
+ALGORITHMS & CS:
+  BFS                  — Breadth-First Search (used for route completion check)
+  Adjacency List       — Graph representation (city → list of connected cities)
+  In-memory Cache      — Storing data in RAM for fast repeated access
+  Throttling           — Limiting rate of operations (min gap between requests)
+  Rate Limiting        — Capping max operations per time window
+
+DEVOPS / INFRA:
+  Environment Variable — Config values set outside code (.env files)
+  CI/CD                — Continuous Integration / Continuous Deployment
+  Vercel               — Platform for deploying Next.js apps (serverless)
+  Supabase             — Managed PostgreSQL + auth + storage platform
+  PgBouncer            — PostgreSQL connection pooler
+  CUID                 — Collision-resistant unique ID (better than UUID for DB PKs)
+
+================================================================================
+SECTION 15: MOCK INTERVIEW — QUESTIONS ONE BY ONE
+================================================================================
+
+HOW TO USE THIS SECTION:
+  Cover the questions below with a piece of paper.
+  Read each question, try to answer it out loud (yes, out loud — this matters!),
+  then reveal the guidance below it and compare.
+  Time yourself: you should answer each question in 60-120 seconds.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q1: "Tell me about your CP-Games project."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER includes:
+  - What problem it solves (CP practice is boring/solo)
+  - What it does (gamified platform with 3 modes on top of Codeforces)
+  - How the core mechanism works (polls CF API → detects solves → updates board)
+  - 1-2 interesting technical challenges
+  - Tech stack mentioned naturally
+  - Delivered in ~90 seconds
+
+❌ AVOID:
+  - Just listing technologies ("it uses Next.js, Prisma, Pusher...")
+  - Being vague ("it's a real-time app")
+  - Reading from memory robotically
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q2: "How does your system handle two players solving the same problem?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  Mention TWO layers:
+  1. checkSolvesLogic determines winner before DB write (earlier timestamp, tie-break by ID)
+  2. Prisma transaction with findFirst check prevents duplicate SolveLog entries
+  Show you understand WHY each layer is needed.
+
+❌ AVOID:
+  - "I use a database so it's handled automatically" (vague, not accurate)
+  - Not mentioning the tie-breaking logic
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q3: "Why not use WebSockets directly?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  Explain serverless functions terminate after each request → can't hold
+  persistent connections → Pusher acts as the relay → tradeoff: complexity
+  for operational simplicity. Show you understand the architectural constraint.
+
+❌ AVOID:
+  - "WebSockets are harder to implement" (wrong reason)
+  - Not explaining the serverless constraint
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q4: "Walk me through what a database transaction looks like in your code."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  Give the SPECIFIC example from poll-submissions:
+  "I use prisma.$transaction(async (tx) => { ... }). Inside, I first check if a
+  SolveLog already exists for this problem. If it does, I return early — another
+  process beat us. If not, I create the SolveLog, then for replace mode I mark
+  the old problem inactive and create the replacement. If any step fails, the
+  entire transaction rolls back, so we never have a SolveLog entry without a
+  corresponding active problem."
+
+❌ AVOID:
+  - Abstract definition without code-level specifics
+  - Not explaining WHY transactions are needed here
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q5: "How would you improve this project?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER (pick 2-3 and go deep on one):
+  "The biggest architectural improvement would be replacing per-match polling with
+  a centralized submission-checking worker. Right now every match independently
+  polls CF for its players. A centralized worker would fetch each unique CF handle
+  only once per interval, regardless of how many matches that player is in. This
+  would reduce CF API calls by an order of magnitude and scale to thousands of
+  simultaneous matches.
+
+  For security, I'd add rate limiting on createMatch and hash the member invite
+  secrets instead of storing them plaintext.
+
+  For UX, I'd add Codeforces OAuth verification so players can prove they own
+  their handle, and a spectator mode for sharing matches publicly."
+
+❌ AVOID:
+  - Only saying "better UI"
+  - Generic improvements not specific to this project
+  - Not showing understanding of which improvement has the highest impact
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q6: "Explain caching in your project and its trade-offs."
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  "I have two levels of in-memory caching:
+
+  First, the CF problemset cache — the full archive of ~10k problems, cached for
+  1 hour. The trade-off is that if Codeforces adds new problems or changes ratings,
+  we won't see those changes for up to an hour. That's acceptable here — problem
+  metadata doesn't change frequently.
+
+  Second, the submission cache per user handle — 10 seconds. Trade-off: a solve
+  that just happened on Codeforces won't be reflected in our game for up to 10
+  seconds after the cooldown expires. That's fine for a game where solves happen
+  minutes apart.
+
+  There's also request coalescing — if two calls for the same handle arrive while
+  a fetch is in flight, they both get the same promise. This reduces duplicate
+  requests but means both callers wait for the first request to complete.
+
+  A limitation: this is in-memory cache on a single serverless function instance.
+  Multiple Vercel instances don't share cache. For high scale, I'd move to a
+  shared Redis cache."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q7: "What happens when CF API goes down?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER (be honest about limitations, show awareness):
+  "Currently: the fetchUserSubmissions function catches errors and returns an
+  empty array, so the poll cycle finds no new solves and the game state freezes
+  but doesn't crash. Players would notice nothing is updating. The cache might
+  soften this for up to 10 seconds.
+
+  This is a real weakness. What I'd add: a status indicator on the game page
+  showing CF API health, a retry mechanism with exponential backoff, and an
+  admin endpoint to manually mark a problem as solved during outages. For a
+  production system, I'd also set up a dead man's switch — if CF is down for
+  5+ minutes during a match, automatically pause the match timer."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q8: "What is a CUID and why is it your Match primary key?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  "CUID stands for Collision-Resistant Unique Identifier. It's similar to UUID
+  but designed with some key properties: it's sortable (has a timestamp prefix),
+  shorter than a UUID, and safe to generate across multiple machines without
+  coordination.
+
+  I use it for Match IDs because the matchId becomes part of the URL (/match/cjld2c...).
+  UUIDs work too, but CUIDs are slightly more URL-friendly and are Prisma's
+  recommended default. Auto-increment integers would also work, but they're
+  guessable — someone could enumerate /match/1, /match/2, etc. and discover
+  other matches. The opaque string ID prevents that."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q9: "How is Ticket to Ride different from Bingo technically?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER (show you understand the architectural differences):
+  "They're quite different in a few ways:
+
+  State representation: Bingo state is derived entirely from the SolveLog table —
+  which cells are claimed is computed on each read. TTR has persistent mutable state
+  stored as a JSON blob in the Match record — the board state between moves matters.
+
+  Real-time: Bingo uses HTTP polling (clients ask for updates every N seconds).
+  TTR uses Pusher WebSockets — when anyone buys a route, all other players
+  need to see it instantly because board decisions are interactive.
+
+  API actions: Bingo has no player-initiated board actions — you just solve on CF
+  and the system detects it. TTR has explicit actions: buying routes, building
+  stations, committing tickets — each a separate API endpoint that validates,
+  updates ttrState, and broadcasts via Pusher.
+
+  Coin economy: TTR introduces a coin system. Solving market problems earns coins;
+  coins are spent to claim routes. Bingo has no economy — first correct solve wins."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MOCK Q10: "What would you do differently if you were starting over?"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ GOOD ANSWER:
+  "A few things. First, I'd design a proper event sourcing architecture from the
+  start. Right now, the SolveLog is used as an event log for Bingo, but TTR has
+  a separate JSON blob. A unified event log where all game state is derived by
+  replaying events would be cleaner, easier to debug, and enable replay/spectator
+  features trivially.
+
+  Second, I'd add a proper background job system (like a Redis queue with a worker)
+  for the CF polling rather than triggering polls from the browser. Browser-initiated
+  polling is fragile — if no one has the tab open, nothing gets polled.
+
+  Third, I'd write tests from the start. The game logic in checkSolvesLogic and
+  ttrLogic is complex enough that unit tests would have caught several bugs much
+  earlier. Currently there are no automated tests — that's a significant gap for
+  any production system."
+
+================================================================================
+FINAL TIPS FOR INTERVIEW DAY
+================================================================================
+
+1. KNOW YOUR NUMBERS:
+   Know specific values, not just "some amount":
+   - Grid sizes: 3, 4, 5, 6
+   - Default ratings: 800 to 3500
+   - Problemset cache: 1 hour
+   - Submission cache: 10 seconds
+   - Throttle delay: 250ms
+   - Pusher channel name format: match-{matchId}
+   - Models: Match, Problem, Team, Member, SolveLog, TtrMap
+   These specifics prove you actually built and measured things.
+
+2. USE THE "SITUATION → PROBLEM → SOLUTION" FRAMEWORK:
+   For every design decision, explain:
+   S: "In a serverless environment..."
+   P: "...you can't hold persistent WebSocket connections..."
+   S: "...so I used Pusher as a relay."
+
+3. ADMIT WEAKNESSES PROACTIVELY:
+   Interviewers respect self-awareness. Don't wait to be caught:
+   "One limitation of the current design is..."
+   "If I were building this for 10k users, I'd..."
+   "Something I'd improve is..."
+
+4. DRAW DIAGRAMS:
+   If you're in person or on a virtual whiteboard — draw the data flow.
+   Even a simple: Browser → API → DB → CF API → Pusher → Browser
+   shows architectural thinking.
+
+5. DON'T MEMORIZE, UNDERSTAND:
+   If you truly understand the system, you can answer variations of questions
+   you haven't prepared for. Memorized answers break under follow-up questions.
+
+6. PRACTICE OUT LOUD:
+   Reading this document is not enough. Record yourself on your phone answering
+   the mock questions. Listen back. Are you concise? Clear? Confident?
+
+================================================================================
+                          END OF CHATGPT.TXT
+================================================================================

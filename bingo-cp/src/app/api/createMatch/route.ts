@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { fetchAndFilterProblems } from '@/lib/problems';
 import { MatchMode } from '@prisma/client';
+import { setMatchBuffer } from '@/lib/matchProblemBuffer';
 
 type ProblemWithGrid = {
   contestId: number;
@@ -94,12 +95,21 @@ export async function POST(req: NextRequest) {
     // For tug single mode, fetch only 1 problem; otherwise fetch grid
     const problemCount = (mode === 'tug' && tugType === 'single') ? 1 : finalGridSize * finalGridSize;
 
-    const selectedProblems = await fetchAndFilterProblems({
+    // Buffer size: at least 20 per player, or 10 minimum (one rating range for normal modes)
+    const totalPlayers = allHandles.length;
+    const bufferSize = Math.max(20 * totalPlayers, 10);
+    const totalFetch = problemCount + bufferSize;
+
+    const allFetchedProblems = await fetchAndFilterProblems({
       userHandles: allHandles,
       minRating,
       maxRating,
-      count: problemCount,
+      count: totalFetch,
     });
+
+    // First `problemCount` go into the match; the rest become the spare buffer
+    const selectedProblems = allFetchedProblems.slice(0, problemCount);
+    const bufferProblems = allFetchedProblems.slice(problemCount);
 
     const problems: ProblemWithGrid[] = selectedProblems.map(
       (p, idx) => ({
@@ -161,6 +171,17 @@ export async function POST(req: NextRequest) {
           teamId: createdTeam.id,
         })),
       });
+    }
+
+    // Store spare problems in server-side buffer for fast replacement during the match
+    if (bufferProblems.length > 0) {
+      setMatchBuffer(match.id, bufferProblems.map(p => ({
+        contestId: p.contestId,
+        index: p.index,
+        name: p.name,
+        rating: p.rating ?? 0,
+        tags: (p as any).tags,
+      })));
     }
 
     return NextResponse.json({ id: match.id }, { status: 200 });

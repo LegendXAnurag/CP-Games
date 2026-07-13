@@ -240,7 +240,8 @@ export async function POST(req: NextRequest) {
               problemKeys,
               newRatingTarget,
               newRatingTarget,
-              allHandles
+              allHandles,
+              matchId,
             );
           } catch (err) {
             console.error('fetchReplacementProblem failed', err);
@@ -402,7 +403,8 @@ export async function POST(req: NextRequest) {
               problemKeys,
               match.minRating ?? 800,
               match.maxRating ?? 3500,
-              allHandles
+              allHandles,
+              matchId,
             );
 
             await prisma.$transaction(async (tx: any) => {

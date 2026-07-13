@@ -26,11 +26,17 @@ export async function checkSolvesLogic(problems: Problem[], players: Player[]) {
     const trackedProblems = new Set(problems.map(problemKey))
     const claims: Record<string, { team: string; handle: string; time: number; id: number }> = {}
 
+    // During live match polling, only fetch the last N submissions (fast).
+    // Full history is only needed at match creation (handled in problems.ts).
+    const liveLimit = process.env.CF_LIVE_POLLING_FETCH_LIMIT
+        ? Number(process.env.CF_LIVE_POLLING_FETCH_LIMIT)
+        : undefined;
+
     // Fetch submissions for all players in parallel to avoid sequential network latency
     const results = await Promise.all(
         players.map(async (player) => {
             try {
-                const submissions = await fetchUserSubmissions(player.handle) as Array<{
+                const submissions = await fetchUserSubmissions(player.handle, liveLimit) as Array<{
                     id: number,
                     creationTimeSeconds: number,
                     problem: { contestId: number; index: string },

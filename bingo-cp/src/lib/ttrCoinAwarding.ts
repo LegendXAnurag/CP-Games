@@ -8,7 +8,7 @@ import { TTRState, TTRParams } from '@/types/match';
 export async function preFetchTtrReplacements(
     match: any,
     newSolves: Array<{ contestId: number; index: string | number; team: string }>,
-    fetchReplacementProblem: (exclude: string[], minRating: number, maxRating: number, handles: string[]) => Promise<any>
+    fetchReplacementProblem: (exclude: string[], minRating: number, maxRating: number, handles: string[], matchId?: string) => Promise<any>
 ): Promise<Record<string, any>> {
     const state = match.ttrState as unknown as TTRState;
     const params = match.ttrParams as unknown as TTRParams;
@@ -35,7 +35,8 @@ export async function preFetchTtrReplacements(
                 Array.from(excludedKeys),
                 levelMin,
                 levelMax,
-                allHandles
+                allHandles,
+                match.id,  // pass matchId so the buffer-first path is taken
             );
             if (replacement) {
                 replacementsMap[`${solve.contestId}-${solve.index}`] = replacement;
